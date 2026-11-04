@@ -668,17 +668,17 @@ function ligarAcoesDetalhe(s){
   var body = document.getElementById('sheetBody');
 
   var btnReiv = body.querySelector('[data-acao=reivindicar]');
-  if (btnReiv) btnReiv.addEventListener('click', function(){ reivindicarNoDetalhe(s.solicitacaoId); });
+  if (btnReiv) btnReiv.addEventListener('click', function(){ reivindicarNoDetalhe(s.solicitacaoId, btnReiv); });
 
   var btnAprovar = body.querySelector('[data-acao=aprovar]');
-  if (btnAprovar) btnAprovar.addEventListener('click', function(){ aprovar(s); });
+  if (btnAprovar) btnAprovar.addEventListener('click', function(){ aprovar(s, btnAprovar); });
 
   var btnMostrarAjustar = body.querySelector('[data-acao=mostrar-ajustar]');
   if (btnMostrarAjustar) btnMostrarAjustar.addEventListener('click', function(){
     document.getElementById('formAjustar').innerHTML = ajustarFormHtml();
     document.getElementById('formAjustar').classList.remove('hidden');
     body.querySelector('[data-acao=cancelar-ajustar]').addEventListener('click', function(){ document.getElementById('formAjustar').classList.add('hidden'); document.getElementById('formAjustar').innerHTML=''; });
-    body.querySelector('[data-acao=enviar-ajuste]').addEventListener('click', function(){ enviarAjuste(s); });
+    body.querySelector('[data-acao=enviar-ajuste]').addEventListener('click', function(){ enviarAjuste(s, this); });
   });
 
   var btnMostrarRejeitar = body.querySelector('[data-acao=mostrar-rejeitar]');
@@ -687,7 +687,7 @@ function ligarAcoesDetalhe(s){
     alvo.innerHTML = rejeitarFormHtml();
     alvo.classList.remove('hidden');
     body.querySelector('[data-acao=cancelar-rejeitar]').addEventListener('click', function(){ alvo.classList.add('hidden'); alvo.innerHTML=''; });
-    body.querySelector('[data-acao=confirmar-rejeitar]').addEventListener('click', function(){ confirmarRejeicao(s); });
+    body.querySelector('[data-acao=confirmar-rejeitar]').addEventListener('click', function(){ confirmarRejeicao(s, this); });
   });
 
   var btnCopiar = body.querySelector('[data-acao=copiar-mensagem]');
@@ -696,17 +696,23 @@ function ligarAcoesDetalhe(s){
   });
 
   var btnSinalEnviado = body.querySelector('[data-acao=marcar-sinal-enviado]');
-  if (btnSinalEnviado) btnSinalEnviado.addEventListener('click', function(){ marcarSinalEnviado(s); });
+  if (btnSinalEnviado) btnSinalEnviado.addEventListener('click', function(){ marcarSinalEnviado(s, btnSinalEnviado); });
 
   var chips = body.querySelectorAll('#sinalFormaChips .chip');
   chips.forEach(function(c){ c.addEventListener('click', function(){ chips.forEach(function(x){ x.setAttribute('aria-pressed','false'); }); c.setAttribute('aria-pressed','true'); }); });
 
   var btnConfirmarSinal = body.querySelector('[data-acao=confirmar-sinal]');
-  if (btnConfirmarSinal) btnConfirmarSinal.addEventListener('click', function(){ confirmarSinal(s); });
+  if (btnConfirmarSinal) btnConfirmarSinal.addEventListener('click', function(){ confirmarSinal(s, btnConfirmarSinal); });
 }
 
-async function chamarAcaoDetalhe(acao, payload, msgSucesso){
+// Mesmo padrão ja usado em reivindicar() (fila) - desabilita e troca o texto NA HORA
+// do toque, antes do fetch, pra nao parecer travado em redes mais lentas (achado real
+// de teste em aparelho fisico: sem isso, o botao fica sem nenhum efeito visual ate a
+// resposta do Apps Script chegar).
+async function chamarAcaoDetalhe(acao, payload, msgSucesso, btn, textoCarregando){
   var s = sessaoAtual();
+  var textoOriginal = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = textoCarregando || 'Processando…'; }
   try {
     var r = await portalApi(acao, payload, s.sessao);
     if (!r.ok) { toast(r.erro || 'Não consegui completar a ação.'); return null; }
@@ -716,20 +722,22 @@ async function chamarAcaoDetalhe(acao, payload, msgSucesso){
   } catch (e) {
     toast('Não consegui falar com o servidor agora.');
     return null;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
   }
 }
 
-async function reivindicarNoDetalhe(id){
-  var r = await chamarAcaoDetalhe('portal.reivindicar', {solicitacaoId:id}, 'Reivindicado — agora é com você.');
+async function reivindicarNoDetalhe(id, btn){
+  var r = await chamarAcaoDetalhe('portal.reivindicar', {solicitacaoId:id}, 'Reivindicado — agora é com você.', btn, 'Reivindicando…');
   if (r) { var s = solicitacaoPorId(id); if (s) renderDetalhe(s); else fecharDetalhe(); }
 }
 
-async function aprovar(s){
-  var r = await chamarAcaoDetalhe('portal.aprovar', {solicitacaoId:s.solicitacaoId, base:s.atualizado}, 'Aprovado.');
+async function aprovar(s, btn){
+  var r = await chamarAcaoDetalhe('portal.aprovar', {solicitacaoId:s.solicitacaoId, base:s.atualizado}, 'Aprovado.', btn, 'Aprovando…');
   if (r) fecharDetalhe();
 }
 
-async function enviarAjuste(s){
+async function enviarAjuste(s, btn){
   var mensagem = (document.getElementById('ajusteMensagem').value || '').trim();
   if (!mensagem) { toast('Escreva a mensagem para o cliente.'); return; }
   var data = document.getElementById('ajusteData').value || null;
@@ -739,28 +747,28 @@ async function enviarAjuste(s){
   if (data) proposta.dataProposta = data;
   if (hora) proposta.horaProposta = hora;
   if (desconto) proposta.descProposto = Number(desconto);
-  var r = await chamarAcaoDetalhe('portal.ajustar', {solicitacaoId:s.solicitacaoId, base:s.atualizado, proposta:proposta, mensagem:mensagem}, 'Proposta enviada ao cliente.');
+  var r = await chamarAcaoDetalhe('portal.ajustar', {solicitacaoId:s.solicitacaoId, base:s.atualizado, proposta:proposta, mensagem:mensagem}, 'Proposta enviada ao cliente.', btn, 'Enviando…');
   if (r) fecharDetalhe();
 }
 
-async function confirmarRejeicao(s){
+async function confirmarRejeicao(s, btn){
   var motivo = (document.getElementById('rejeitarMotivo').value || '').trim();
   if (!motivo) { toast('Explique o motivo da rejeição.'); return; }
-  var r = await chamarAcaoDetalhe('portal.rejeitar', {solicitacaoId:s.solicitacaoId, base:s.atualizado, motivo:motivo}, 'Solicitação rejeitada.');
+  var r = await chamarAcaoDetalhe('portal.rejeitar', {solicitacaoId:s.solicitacaoId, base:s.atualizado, motivo:motivo}, 'Solicitação rejeitada.', btn, 'Rejeitando…');
   if (r) fecharDetalhe();
 }
 
-async function marcarSinalEnviado(s){
-  var r = await chamarAcaoDetalhe('portal.marcarSinalEnviado', {solicitacaoId:s.solicitacaoId, base:s.atualizado}, 'Marcado como enviado.');
+async function marcarSinalEnviado(s, btn){
+  var r = await chamarAcaoDetalhe('portal.marcarSinalEnviado', {solicitacaoId:s.solicitacaoId, base:s.atualizado}, 'Marcado como enviado.', btn, 'Marcando…');
   if (r) { var atual = solicitacaoPorId(s.solicitacaoId); if (atual) renderDetalhe(atual); }
 }
 
-async function confirmarSinal(s){
+async function confirmarSinal(s, btn){
   var valor = Number(document.getElementById('sinalValor').value);
   var formaEl = document.querySelector('#sinalFormaChips .chip[aria-pressed=true]');
   var forma = formaEl ? ROTULOS_PAG[formaEl.getAttribute('data-forma')] : 'Pix';
   if (!valor) { toast('Informe o valor recebido.'); return; }
-  var r = await chamarAcaoDetalhe('portal.confirmarSinal', {solicitacaoId:s.solicitacaoId, base:s.atualizado, pagamento:{valor:valor, forma:forma}}, 'Sinal confirmado — virou pedido.');
+  var r = await chamarAcaoDetalhe('portal.confirmarSinal', {solicitacaoId:s.solicitacaoId, base:s.atualizado, pagamento:{valor:valor, forma:forma}}, 'Sinal confirmado — virou pedido.', btn, 'Confirmando…');
   if (r) fecharDetalhe();
 }
 
