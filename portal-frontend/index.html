@@ -321,15 +321,14 @@ a{color:inherit;}
       <div class="block" id="whenBlock" style="display:none;">
         <h2>Retirar quando?</h2>
         <div class="pickup-row" id="dateChips"></div>
-        <div class="pickup-row" id="timeChips">
-          <button class="chip" data-time="08:00–09:00">08:00–09:00</button>
-          <button class="chip" data-time="09:30–10:30">09:30–10:30</button>
-          <button class="chip" data-time="14:00–15:00">14:00–15:00</button>
-          <button class="chip" data-time="17:00–18:00">17:00–18:00</button>
+        <div class="field" id="fieldHora" style="margin-top:10px;">
+          <label for="inpHora">Que horas?</label>
+          <input id="inpHora" type="time">
+          <span class="err">Escolha um horário de retirada.</span>
         </div>
         <div class="note-box warn" id="antecedenciaNote" style="display:none;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-          <div><b>Pedido para hoje</b><p>A padaria confirma conforme a capacidade do forno no momento.</p></div>
+          <div><b>Qualquer horário vale</b><p>A padaria confirma pelo WhatsApp se dá tempo, conforme a capacidade do forno.</p></div>
         </div>
       </div>
 
@@ -450,11 +449,17 @@ var CATALOG = [];
 var cart = {};
 var selectedCat = 'all';
 var selectedDateIdx = 0;
-var selectedTime = null;
 var dateOptions = [];
 var trackSol = null, trackTok = null; // solicitação/verificador da tela de acompanhamento atual
 
 function money(v){ return 'R$ ' + v.toFixed(2).replace('.', ','); }
+
+/** Produtos por kg aceitam fração (padaria vende 300g, 500g...); os demais (un, cento) são sempre inteiros. */
+function passoQtd(un){ return un === 'kg' ? 0.1 : 1; }
+function formatQtd(qty, un){
+  if (un !== 'kg') return String(qty);
+  return qty < 1 ? (Math.round(qty*1000)) + ' g' : String(qty).replace('.', ',') + ' kg';
+}
 
 /** Mesma whitelist de S17 (PORTAL-SEGURANCA.md) que o painel interno já usa: texto livre do
  * servidor (mensagem de ajuste, sinalMensagem) só é seguro se escapado ANTES de virar innerHTML. */
@@ -579,10 +584,12 @@ function renderBuySlots(){
   document.querySelectorAll('.buy-slot').forEach(function(slot){
     var id = slot.dataset.id;
     var qty = cart[id] ? cart[id].qty : 0;
+    var item = findItemById(id);
+    var un = (item && item.un) || 'un';
     if (qty > 0){
       slot.innerHTML = '<div class="stepper">' +
         '<button type="button" data-act="dec" data-id="'+id+'" aria-label="Diminuir quantidade">−</button>' +
-        '<span class="qty">'+qty+'</span>' +
+        '<span class="qty">'+formatQtd(qty, un)+'</span>' +
         '<button type="button" data-act="inc" data-id="'+id+'" aria-label="Aumentar quantidade">+</button></div>';
     } else {
       slot.innerHTML = '<button type="button" class="add-btn" data-act="add" data-id="'+id+'" aria-label="Adicionar ao carrinho">+</button>';
@@ -594,12 +601,14 @@ document.getElementById('catalog').addEventListener('click', function(e){
   var btn = e.target.closest('button[data-act]');
   if (!btn) return;
   var id = btn.dataset.id, act = btn.dataset.act;
+  var item = findItemById(id);
+  var passo = passoQtd(item && item.un);
   if (act === 'add' || act === 'inc'){
-    if (!cart[id]){ var item = findItemById(id); cart[id] = {name:item.name, price:item.price, qty:0}; }
-    cart[id].qty += 1;
+    if (!cart[id]){ cart[id] = {name:item.name, price:item.price, qty:0}; }
+    cart[id].qty = Math.round((cart[id].qty + passo) * 100) / 100;
     if (act==='add') showToast(cart[id].name + ' adicionado');
   } else if (act === 'dec'){
-    cart[id].qty -= 1;
+    cart[id].qty = Math.round((cart[id].qty - passo) * 100) / 100;
     if (cart[id].qty <= 0) delete cart[id];
   }
   renderBuySlots();
@@ -627,8 +636,10 @@ function cartCount(){ var n=0; for (var k in cart) n+=cart[k].qty; return n; }
 function cartTotalValue(){ var t=0; for (var k in cart) t+=cart[k].qty*cart[k].price; return t; }
 
 function lineHTML(id, it, removable){
+  var produto = findItemById(id);
+  var un = (produto && produto.un) || 'un';
   return '<div class="cart-line">' +
-    '<div class="ci-info"><b>'+it.name+'</b><span>'+it.qty+' × '+money(it.price)+'</span></div>' +
+    '<div class="ci-info"><b>'+it.name+'</b><span>'+formatQtd(it.qty, un)+' × '+money(it.price)+(un==='kg' ? '/kg' : '')+'</span></div>' +
     '<div class="ci-sub">'+money(it.qty*it.price)+'</div>' +
     (removable ? '<button type="button" class="ci-rm" data-rm="'+id+'" aria-label="Remover '+it.name+'">×</button>' : '') +
     '</div>';
@@ -694,13 +705,6 @@ document.addEventListener('click', function(e){
   if (goto){ e.preventDefault(); goTo(goto.dataset.goto); }
 });
 
-document.getElementById('timeChips').addEventListener('click', function(e){
-  var btn = e.target.closest('.chip'); if(!btn) return;
-  document.querySelectorAll('#timeChips .chip').forEach(function(c){c.classList.remove('selected');});
-  btn.classList.add('selected');
-  selectedTime = btn.dataset.time;
-});
-
 function goTo(view){
   document.querySelectorAll('.view').forEach(function(v){v.classList.remove('active');});
   document.getElementById('view-'+view).classList.add('active');
@@ -713,18 +717,22 @@ function goTo(view){
 document.getElementById('submitBtn').addEventListener('click', function(){
   var nome = document.getElementById('inpNome');
   var whats = document.getElementById('inpWhats');
+  var horaInput = document.getElementById('inpHora');
   var ok = true;
   document.getElementById('fieldNome').classList.toggle('invalid', !nome.value.trim());
   document.getElementById('fieldWhats').classList.toggle('invalid', !whats.value.trim());
+  document.getElementById('fieldHora').classList.toggle('invalid', !horaInput.value);
   if (!nome.value.trim() || !whats.value.trim()) ok = false;
-  if (!selectedTime){ showToast('Escolha um horário de retirada'); ok = false; }
+  if (!horaInput.value) ok = false;
   if (!ok) return;
 
   // Onda 1/2: so "Retirada na loja" - entrega fica pra uma rodada futura (nao existe campo pra isso ainda nesta tela).
-  var hora = selectedTime.split('–')[0].trim();
+  // Horario livre (sem faixas fixas): o cliente pede quando quiser, a padaria
+  // decide se da tempo pelo fluxo normal de aprovar/ajustar/rejeitar no painel.
+  var hora = horaInput.value;
   var linhas = Object.keys(cart).map(function(id){
     var item = findItemById(id);
-    return { pid: id, nome: cart[id].name, un: (item && item.un) || 'un', preco: cart[id].price, modo: 'un', qtd: cart[id].qty };
+    return { pid: id, nome: cart[id].name, un: (item && item.un) || 'un', preco: cart[id].price, modo: 'qtd', qtd: cart[id].qty };
   });
   // Token de acompanhamento: gerado no cliente, imprevisível, nunca reaproveitado
   // entre solicitações diferentes - é o "verificador" que o backend já exige
@@ -746,7 +754,7 @@ document.getElementById('submitBtn').addEventListener('click', function(){
     trackSol = resp.solicitacaoId; trackTok = tokenAcompanhamento;
     renderStatusView({
       solicitacaoId: resp.solicitacaoId, status: resp.status || 'enviada',
-      quando: dateOptions[selectedDateIdx].label + ' · ' + selectedTime,
+      quando: dateOptions[selectedDateIdx].label + ' · ' + hora,
       itensTexto: cartCount() + (cartCount()===1?' item':' itens'),
       totalTexto: money(cartTotalValue()),
       link: montarLinkAcompanhamento(resp.solicitacaoId, tokenAcompanhamento)
