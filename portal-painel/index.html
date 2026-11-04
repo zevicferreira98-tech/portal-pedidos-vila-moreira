@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<!--
+  portal-painel/index.html
+  ---------------------------------------------------------------------------
+  Painel de aprovação (Onda 3) — primeira fatia real (Wave 2, incremento 1):
+  login da equipe + fila de Solicitações por prioridade (Alternativa 2,
+  PORTAL-PAINEL-DESIGN.md Seção 7) + Reivindicar. Chama só o projeto NOVO
+  ("Portal Pedidos - Vila Moreira"), nunca o projeto antigo diretamente —
+  mesmo invariante que portal-frontend/index.html já segue.
+
+  Incremento 2 (mesma sessão): sheet de detalhe/ação completa — aprovar,
+  ajustar (simplificado: data/hora/desconto + mensagem, NUNCA itens — isso
+  continua pelo editor, precisa do buscador de catálogo que esta tela não
+  tem), rejeitar, marcar sinal enviado, confirmar sinal recebido. Perfil
+  "Balcão" vê os botões de gerência desabilitados com legenda, nunca
+  escondidos (Seção 4) — a autorização real é sempre no servidor
+  (nivelAtendePerfil_), isto aqui é só conveniência de interface.
+
+  Ainda NÃO incluído, de propósito: edição de itens dentro de Ajustar;
+  histórico da solicitação (não existe ação dedicada no backend ainda).
+
+  Paleta e tipografia conferidas ao vivo contra o sistema real em
+  2026-11-03 (getComputedStyle, pedidos.padariavilamoreira.com.br) — as 4
+  cores de marca batem exatamente com o que já era documentado; Lora para
+  títulos, Poppins para o corpo, cantos 8px (botão)/12px (card) também
+  conferidos ao vivo, não herdados às cegas de fonte-original/index.html
+  (que está desatualizado — ver CLAUDE.md).
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Solicitações — Vila Moreira</title>
+<style>
+  :root{
+    --brand:#A66142; --brand-strong:#934F27; --amber:#F8AF3C;
+    --bg:#FAF3E7; --ink:#4A2E1D; --card:#FFFDF8;
+    --shadow:0 1px 2px rgba(74,46,29,.08);
+    --rc:12px; --rb:8px;
+    --muted:#8A6B55;
+    --danger:#B3261E; --danger-bg:#FBEAEA;
+    --ok:#2E7D4F; --ok-bg:#E9F6EE;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Poppins,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  h1,h2,h3{font-family:Lora,Georgia,"Times New Roman",serif;margin:0;font-weight:600}
+  button{font-family:inherit;cursor:pointer}
+  .hidden{display:none !important}
+
+  /* ---- Login ---- */
+  #login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .login-card{background:var(--card);border-radius:var(--rc);box-shadow:var(--shadow);padding:32px;width:100%;max-width:360px}
+  .login-card h1{font-size:22px;color:var(--brand-strong);margin-bottom:4px}
+  .login-card p.sub{margin:0 0 20px;color:var(--muted);font-size:14px}
+  .campo{margin-bottom:14px}
+  .campo label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+  .campo input{width:100%;padding:10px 12px;border:1px solid #E3D3BF;border-radius:var(--rb);font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
+  .campo input:focus{outline:2px solid var(--brand);outline-offset:1px}
+  .btn{display:block;width:100%;padding:11px 16px;border:none;border-radius:var(--rb);font-size:15px;font-weight:600;transition:opacity .15s}
+  .btn.primary{background:var(--brand);color:#fff}
+  .btn.primary:hover{opacity:.92}
+  .btn.primary:disabled{opacity:.6;cursor:default}
+  .btn.ghost{background:transparent;color:var(--brand-strong);border:1px solid #E3D3BF}
+  .erro{background:var(--danger-bg);color:var(--danger);border-radius:var(--rb);padding:10px 12px;font-size:13px;margin-bottom:14px}
+
+  /* ---- App shell ---- */
+  #app header{background:var(--card);box-shadow:var(--shadow);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  #app header h1{font-size:19px;color:var(--brand-strong)}
+  .quemsou{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+  .quemsou b{color:var(--ink)}
+  main{max-width:960px;margin:0 auto;padding:20px}
+  .busca{width:100%;padding:11px 14px;border:1px solid #E3D3BF;border-radius:var(--rb);font-size:14px;background:var(--card);color:var(--ink);margin-bottom:20px}
+
+  .bloco{margin-bottom:28px}
+  .bloco-h{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+  .bloco-h h2{font-size:16px}
+  .bloco-h .n{background:var(--amber);color:var(--brand-strong);font-weight:700;font-size:12px;border-radius:999px;padding:1px 8px}
+  .bloco.destaque{background:rgba(248,175,60,.12);border-radius:var(--rc);padding:12px}
+  .bloco-vazio{color:var(--muted);font-size:13px;padding:4px 2px 0}
+
+  .card-sol{background:var(--card);border-radius:var(--rc);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:10px;border-left:4px solid var(--brand)}
+  .card-sol .linha1{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .card-sol .cliente{font-weight:600;font-size:15px}
+  .card-sol .quando{font-size:13px;color:var(--muted);margin-top:2px}
+  .status{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap}
+  .st-enviada{background:#FDEBD3;color:#92590E}
+  .st-em_analise{background:#E4EEFB;color:#2457A3}
+  .st-aguardando_aceite_cliente{background:var(--danger-bg);color:#92590E}
+  .st-sinal_solicitado{background:#E9F6EE;color:#1E6B40}
+  .st-convertida{background:var(--ok-bg);color:var(--ok)}
+  .st-rejeitada,.st-expirada{background:#F1E7E3;color:#7A5C4F}
+  .card-sol .itens{font-size:13px;color:var(--ink);margin-top:8px}
+  .card-sol .rodape{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+  .card-sol .total{font-weight:700;font-variant-numeric:tabular-nums}
+  .card-sol .idade{font-size:12px;color:var(--muted)}
+  .card-sol .acoes{margin-top:10px;display:flex;gap:8px}
+  .card-sol .acoes .btn{width:auto;padding:7px 14px;font-size:13px}
+  .nota{font-size:12px;color:var(--muted);margin-top:6px;font-style:italic}
+
+  .carregando,.sem-itens{text-align:center;color:var(--muted);padding:40px 20px;font-size:14px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:var(--rb);font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:50}
+
+  .card-sol{cursor:pointer}
+
+  /* ---- Sheet de detalhe (Secao 9, PORTAL-PAINEL-DESIGN.md) ---- */
+  .sheet-overlay{position:fixed;inset:0;background:rgba(74,46,29,.35);z-index:40}
+  .sheet{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--bg);z-index:41;box-shadow:-4px 0 16px rgba(74,46,29,.15);display:flex;flex-direction:column}
+  .sheet-h{background:var(--card);box-shadow:var(--shadow);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .sheet-h button.voltar{background:none;border:none;font-size:20px;color:var(--brand-strong);cursor:pointer;padding:4px 8px}
+  .sheet-h .titulo{flex:1;min-width:0}
+  .sheet-h .titulo .nome{font-family:Lora,Georgia,serif;font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sheet-body{flex:1;overflow-y:auto;padding:16px}
+  .sheet-card{background:var(--card);border-radius:var(--rc);box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+  .sheet-card h3{font-size:14px;margin-bottom:10px}
+  .warn-box{background:var(--danger-bg);color:#92590E;border-radius:var(--rb);padding:10px 12px;font-size:13px;margin-bottom:14px}
+
+  dl.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:13px}
+  dl.kv dt{color:var(--muted)}
+  dl.kv dd{margin:0}
+
+  .lines{margin:10px 0}
+  .line{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid #F1E3D1}
+  .totals{display:flex;justify-content:space-between;padding-top:8px;font-weight:700}
+
+  .campo textarea{width:100%;padding:10px 12px;border:1px solid #E3D3BF;border-radius:var(--rb);font-size:14px;font-family:inherit;background:#fff;color:var(--ink);resize:vertical;min-height:70px}
+  .campo input[type=date],.campo input[type=time],.campo input[type=number]{width:100%;padding:9px 10px;border:1px solid #E3D3BF;border-radius:var(--rb);font-size:14px;font-family:inherit;background:#fff;color:var(--ink)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .chip-toggle{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #E3D3BF;border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer;margin:0 6px 6px 0}
+  .chip-toggle input{margin:0}
+  .chip{display:inline-block;background:#fff;border:1px solid #E3D3BF;border-radius:999px;padding:6px 14px;font-size:13px;cursor:pointer;margin:0 6px 6px 0}
+  .chip[aria-pressed=true]{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  .btn.sm{width:auto;padding:7px 14px;font-size:13px;display:inline-block}
+  .btn.danger{background:var(--danger);color:#fff}
+  .btn.block{display:block;width:100%;text-align:center}
+  .acoes-sheet{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .acoes-sheet .btn{width:auto;flex:1;min-width:120px}
+  .legenda-bloqueado{font-size:12px;color:var(--muted);margin-top:6px}
+
+  @media (max-width:600px){ main{padding:14px} #app header{padding:12px 14px} .sheet{width:100%} }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <h1>Solicitações</h1>
+    <p class="sub">Entre com seu nome e PIN de sempre.</p>
+    <div id="loginErro" class="erro hidden"></div>
+    <form id="formLogin">
+      <div class="campo">
+        <label for="campoNome">Nome</label>
+        <input id="campoNome" type="text" autocomplete="username" required>
+      </div>
+      <div class="campo">
+        <label for="campoPin">PIN</label>
+        <input id="campoPin" type="password" inputmode="numeric" autocomplete="current-password" required>
+      </div>
+      <button type="submit" id="btnEntrar" class="btn primary">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Solicitações</h1>
+    <div class="quemsou">
+      <span><b id="quemNome"></b> · <span id="quemPerfil"></span></span>
+      <button id="btnSair" class="btn ghost" style="width:auto;padding:6px 12px;font-size:13px">Sair</button>
+    </div>
+  </header>
+  <main>
+    <input id="busca" class="busca" type="search" placeholder="Buscar por cliente...">
+    <div id="filaWrap">
+      <div class="carregando">Carregando fila…</div>
+    </div>
+  </main>
+</div>
+
+<div id="sheetOverlay" class="sheet-overlay hidden"></div>
+<div id="sheet" class="sheet hidden">
+  <div class="sheet-h">
+    <button id="btnFecharSheet" class="voltar" aria-label="Voltar">←</button>
+    <div class="titulo">
+      <div class="nome" id="sheetNome"></div>
+      <span class="status" id="sheetStatus"></span>
+    </div>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+(function(){
+
+var PORTAL_API_URL = 'https://script.google.com/macros/s/AKfycbzzMkLu-U5qRBp10akFds0A8iZ_BwcQxmYUh8JCjpjHIZcg_dIyEAlK2-1leKoTlKIT/exec';
+var CHAVE_SESSAO = 'painelSessao';
+
+/* Mesmo padrão já comprovado em portal-frontend/index.html: text/plain evita o preflight CORS que o Apps Script não trata. */
+async function portalApi(acao, payload, sessao){
+  var corpo = Object.assign({acao:acao, versao:1}, payload || {});
+  if (sessao) corpo.sessao = sessao;
+  var res = await fetch(PORTAL_API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(corpo),
+    redirect:'follow'
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json();
+}
+
+function sessaoAtual(){
+  try { return JSON.parse(localStorage.getItem(CHAVE_SESSAO) || 'null'); }
+  catch(e){ return null; }
+}
+function salvarSessao(s){ localStorage.setItem(CHAVE_SESSAO, JSON.stringify(s)); }
+function limparSessao(){ localStorage.removeItem(CHAVE_SESSAO); }
+
+function toast(msg){
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ el.classList.add('hidden'); }, 3200);
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function money(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.', ','); }
+
+function idadeTexto(isoCriado){
+  if (!isoCriado) return '';
+  var ms = Date.now() - new Date(isoCriado).getTime();
+  var min = Math.max(0, Math.round(ms/60000));
+  if (min < 60) return 'há ' + min + ' min';
+  var h = Math.round(min/60);
+  return 'há ' + h + ' h';
+}
+
+var ROTULOS_STATUS = {
+  enviada:'Nova', em_analise:'Em análise', aguardando_aceite_cliente:'Aguardando cliente',
+  sinal_solicitado:'Aguardando sinal', convertida:'Convertida', rejeitada:'Rejeitada', expirada:'Expirou sem resposta'
+};
+
+/* ---------- Login ---------- */
+
+function mostrarApp(sessaoObj){
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('quemNome').textContent = sessaoObj.nome;
+  document.getElementById('quemPerfil').textContent = sessaoObj.perfil;
+  carregarFila();
+}
+
+function mostrarLogin(mensagemErro){
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login').classList.remove('hidden');
+  var erroEl = document.getElementById('loginErro');
+  if (mensagemErro) { erroEl.textContent = mensagemErro; erroEl.classList.remove('hidden'); }
+  else { erroEl.classList.add('hidden'); }
+}
+
+async function fazerLogin(nome, pin){
+  var btn = document.getElementById('btnEntrar');
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    var r = await portalApi('portal.entrarEquipe', {nome:nome, pin:pin});
+    if (!r.ok) {
+      mostrarLogin(r.erro || 'Não consegui entrar.');
+      return;
+    }
+    salvarSessao({sessao:r.sessao, nome:r.nome, perfil:r.perfil});
+    mostrarApp({nome:r.nome, perfil:r.perfil});
+  } catch (e) {
+    mostrarLogin('Não consegui falar com o servidor agora. Tente de novo.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
+}
+
+document.getElementById('formLogin').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var nome = document.getElementById('campoNome').value.trim();
+  var pin = document.getElementById('campoPin').value.trim();
+  if (!nome || !pin) return;
+  fazerLogin(nome, pin);
+});
+
+document.getElementById('btnSair').addEventListener('click', async function(){
+  var s = sessaoAtual();
+  limparSessao();
+  mostrarLogin();
+  if (s && s.sessao) { try { await portalApi('portal.sairEquipe', {sessao:s.sessao}); } catch(e){ /* melhor esforco */ } }
+});
+
+/* ---------- Fila ---------- */
+
+var ultimaFila = [];
+
+async function carregarFila(){
+  var s = sessaoAtual();
+  if (!s) { mostrarLogin(); return; }
+  var wrap = document.getElementById('filaWrap');
+  try {
+    var r = await portalApi('portal.listarFila', {}, s.sessao);
+    if (!r.ok) {
+      if (r.codigo === 'sessao_invalida' || r.codigo === 'sessao_ausente') {
+        limparSessao();
+        mostrarLogin('Sua sessão expirou. Entre de novo.');
+        return;
+      }
+      wrap.innerHTML = '<div class="sem-itens">Não consegui carregar a fila: ' + esc(r.erro || r.codigo) + '</div>';
+      return;
+    }
+    ultimaFila = r.solicitacoes || [];
+    renderFila(document.getElementById('busca').value);
+  } catch (e) {
+    wrap.innerHTML = '<div class="sem-itens">Não consegui falar com o servidor agora.</div>';
+  }
+}
+
+function renderFila(filtroTexto){
+  var wrap = document.getElementById('filaWrap');
+  var termo = (filtroTexto || '').trim().toLowerCase();
+  var itens = ultimaFila.filter(function(s){
+    return !termo || (s.cliente || '').toLowerCase().indexOf(termo) !== -1;
+  });
+
+  var bloco1 = itens.filter(function(s){ return s.status === 'enviada' || s.status === 'sinal_solicitado'; })
+    .sort(function(a,b){ return new Date(a.criado) - new Date(b.criado); });
+  var bloco2 = itens.filter(function(s){ return s.status === 'em_analise' || s.status === 'aguardando_aceite_cliente'; })
+    .sort(function(a,b){ return new Date(a.criado) - new Date(b.criado); });
+  var bloco3 = itens.filter(function(s){ return ['convertida','rejeitada','expirada'].indexOf(s.status) !== -1; })
+    .sort(function(a,b){ return new Date(b.atualizado) - new Date(a.atualizado); })
+    .slice(0, 8);
+
+  wrap.innerHTML =
+    blocoHtml('Precisa de você agora', bloco1, true) +
+    blocoHtml('Em andamento', bloco2, false) +
+    blocoHtml('Resolvidas recentemente', bloco3, false);
+
+  wrap.querySelectorAll('[data-reivindicar]').forEach(function(btn){
+    btn.addEventListener('click', function(ev){ ev.stopPropagation(); reivindicar(btn.getAttribute('data-reivindicar'), btn); });
+  });
+  wrap.querySelectorAll('[data-abrir]').forEach(function(card){
+    card.addEventListener('click', function(){ abrirDetalhe(card.getAttribute('data-abrir')); });
+  });
+}
+
+function blocoHtml(titulo, itens, destaque){
+  var corpo = itens.length
+    ? itens.map(cardHtml).join('')
+    : '<div class="bloco-vazio">Nada aqui agora.</div>';
+  return '<div class="bloco' + (destaque ? ' destaque' : '') + '">' +
+    '<div class="bloco-h"><h2>' + esc(titulo) + '</h2><span class="n">' + itens.length + '</span></div>' +
+    corpo + '</div>';
+}
+
+function cardHtml(s){
+  var qtdItens = (s.linhas || []).length;
+  var acoes = '';
+  if (s.status === 'enviada') {
+    acoes = '<div class="acoes"><button class="btn primary" data-reivindicar="' + esc(s.solicitacaoId) + '">Reivindicar para analisar</button></div>';
+  } else if (s.status === 'em_analise' && s.reivindicadoPor) {
+    acoes = '<div class="nota">Em análise por ' + esc(s.reivindicadoPor) + '</div>';
+  }
+  return '<div class="card-sol" data-abrir="' + esc(s.solicitacaoId) + '">' +
+    '<div class="linha1">' +
+      '<div><div class="cliente">' + esc(s.cliente || '(sem nome)') + '</div>' +
+      '<div class="quando">' + esc(s.data || '') + (s.hora ? ' às ' + esc(s.hora) : '') + ' · ' + esc(s.tipo || '') + '</div></div>' +
+      '<span class="status st-' + esc(s.status) + '">' + esc(ROTULOS_STATUS[s.status] || s.status) + '</span>' +
+    '</div>' +
+    '<div class="itens">' + qtdItens + ' ' + (qtdItens === 1 ? 'item' : 'itens') + '</div>' +
+    '<div class="rodape">' +
+      '<span class="total">' + money(s.totalEstimado) + '</span>' +
+      '<span class="idade">' + idadeTexto(s.criado) + '</span>' +
+    '</div>' +
+    acoes +
+  '</div>';
+}
+
+async function reivindicar(solicitacaoId, btnEl){
+  var s = sessaoAtual();
+  if (!s) return;
+  btnEl.disabled = true; btnEl.textContent = 'Reivindicando…';
+  try {
+    var r = await portalApi('portal.reivindicar', {solicitacaoId:solicitacaoId}, s.sessao);
+    if (!r.ok) { toast(r.erro || 'Não consegui reivindicar.'); btnEl.disabled = false; btnEl.textContent = 'Reivindicar para analisar'; return; }
+    toast('Reivindicado — agora é com você.');
+    carregarFila();
+  } catch (e) {
+    toast('Não consegui falar com o servidor agora.');
+    btnEl.disabled = false; btnEl.textContent = 'Reivindicar para analisar';
+  }
+}
+
+/* ---------- Detalhe/ação (Secao 9, PORTAL-PAINEL-DESIGN.md) ---------- */
+
+var ROTULOS_PAG = {pix:'Pix', dinheiro:'Dinheiro', debito:'Débito', credito:'Crédito'};
+
+function solicitacaoPorId(id){
+  return ultimaFila.filter(function(s){ return s.solicitacaoId === id; })[0] || null;
+}
+
+function abrirDetalhe(id){
+  var s = solicitacaoPorId(id);
+  if (!s) { toast('Não achei essa solicitação na lista atual — atualizando…'); carregarFila(); return; }
+  document.getElementById('sheetOverlay').classList.remove('hidden');
+  document.getElementById('sheet').classList.remove('hidden');
+  renderDetalhe(s);
+}
+
+function fecharDetalhe(){
+  document.getElementById('sheetOverlay').classList.add('hidden');
+  document.getElementById('sheet').classList.add('hidden');
+}
+
+document.getElementById('btnFecharSheet').addEventListener('click', fecharDetalhe);
+document.getElementById('sheetOverlay').addEventListener('click', fecharDetalhe);
+
+function souGerencia(){
+  var s = sessaoAtual();
+  return !!s && s.perfil === 'Administrador';
+}
+
+function renderDetalhe(s){
+  document.getElementById('sheetNome').textContent = s.cliente || '(sem nome)';
+  var statusEl = document.getElementById('sheetStatus');
+  statusEl.textContent = ROTULOS_STATUS[s.status] || s.status;
+  statusEl.className = 'status st-' + s.status;
+
+  var html = '';
+
+  if (s.status === 'em_analise' && s.reivindicadoPor && s.reivindicadoPor !== (sessaoAtual() || {}).nome) {
+    html += '<div class="warn-box">Em análise por ' + esc(s.reivindicadoPor) + ' — as ações abaixo ainda funcionam (o servidor não trava isso), mas confirme com a pessoa antes de decidir.</div>';
+  }
+
+  html += '<div class="sheet-card"><h3>Dados do cliente</h3><dl class="kv">' +
+    '<dt>Cliente</dt><dd>' + esc(s.cliente) + '</dd>' +
+    '<dt>Telefone</dt><dd>' + esc(s.fone) + '</dd>' +
+    '<dt>Retirada</dt><dd>' + esc(s.tipo) + (s.tipo === 'Entrega' && s.end ? ' — ' + esc(s.end) : '') + '</dd>' +
+    '<dt>Data e hora</dt><dd>' + esc(s.data) + (s.hora ? ' às ' + esc(s.hora) : '') + '</dd>' +
+    '<dt>Pagamento</dt><dd>' + esc(s.pag || '—') + '</dd>' +
+    (s.obs ? '<dt>Observações</dt><dd>' + esc(s.obs) + '</dd>' : '') +
+    '<dt>Canal</dt><dd>' + esc(s.canal || 'Portal') + '</dd>' +
+  '</dl></div>';
+
+  var linhas = s.linhas || [];
+  html += '<div class="sheet-card"><h3>Itens</h3><div class="lines">' +
+    linhas.map(function(l){
+      return '<div class="line"><span>' + (l.qtd || 1) + 'x ' + esc(l.nome || l.produtoId || '') + '</span><span>' + money((l.preco||0) * (l.qtd||1)) + '</span></div>';
+    }).join('') +
+    '</div><div class="totals"><span>Total estimado</span><span>' + money(s.totalEstimado) + '</span></div></div>';
+
+  html += acoesHtml(s);
+
+  if (s.status === 'rejeitada' && s.motivoRejeicao) {
+    html += '<div class="sheet-card"><h3>Motivo da rejeição</h3><p style="font-size:13px;margin:0">' + esc(s.motivoRejeicao) + '</p></div>';
+  }
+  if (s.status === 'convertida' && s.pedidoNum) {
+    html += '<div class="sheet-card"><h3>Convertida</h3><p style="font-size:13px;margin:0">Virou o pedido <b>' + esc(s.pedidoNum) + '</b> no sistema.</p></div>';
+  }
+
+  html += '<div class="nota">Criada em ' + esc(formatarDataHora(s.criado)) + ' · atualizada em ' + esc(formatarDataHora(s.atualizado)) + '</div>';
+
+  document.getElementById('sheetBody').innerHTML = html;
+  ligarAcoesDetalhe(s);
+}
+
+function formatarDataHora(iso){
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  catch(e){ return iso; }
+}
+
+function acoesHtml(s){
+  if (s.status === 'enviada') {
+    return '<div class="sheet-card"><button class="btn primary block" data-acao="reivindicar">Reivindicar para analisar</button></div>';
+  }
+  if (s.status === 'em_analise') {
+    var podeAprovar = souGerencia();
+    return '<div class="sheet-card"><h3>Decidir</h3>' +
+      '<div class="acoes-sheet">' +
+        '<button class="btn primary" data-acao="aprovar"' + (podeAprovar ? '' : ' disabled') + '>Aprovar</button>' +
+        '<button class="btn ghost" data-acao="mostrar-ajustar">Ajustar</button>' +
+        '<button class="btn danger" data-acao="mostrar-rejeitar">Rejeitar</button>' +
+      '</div>' +
+      (podeAprovar ? '' : '<div class="legenda-bloqueado">Aprovar exige perfil de gerência.</div>') +
+      '<div id="formAjustar" class="hidden"></div>' +
+      '<div id="formRejeitar" class="hidden"></div>' +
+    '</div>';
+  }
+  if (s.status === 'aguardando_aceite_cliente') {
+    return '<div class="sheet-card"><h3>Proposta enviada ao cliente</h3>' +
+      '<p style="font-size:13px;margin:0 0 10px">Expira em ' + esc(formatarDataHora(s.expiraEm)) + '. O cliente ainda não respondeu.</p>' +
+      '<button class="btn danger sm" data-acao="mostrar-rejeitar">Rejeitar / desistir da proposta</button>' +
+      '<div id="formRejeitar" class="hidden"></div>' +
+    '</div>';
+  }
+  if (s.status === 'sinal_solicitado') {
+    return sinalHtml(s);
+  }
+  return '';
+}
+
+function sinalHtml(s){
+  var jaEnviado = !!s.sinalEnviadoEm;
+  return '<div class="sheet-card"><h3>Sinal</h3>' +
+    '<dl class="kv"><dt>Valor</dt><dd>' + money(s.sinalValorCalculado) + '</dd></dl>' +
+    (s.sinalMensagem ? '<p style="font-size:13px;background:#fff;border-radius:8px;padding:10px;margin:10px 0">' + esc(s.sinalMensagem) + '</p>' : '') +
+    (s.sinalMensagem ? '<button class="btn ghost sm" data-acao="copiar-mensagem">Copiar mensagem</button>' : '') +
+    '<div style="margin-top:14px">' +
+      (jaEnviado
+        ? '<div class="nota">Enviado em ' + esc(formatarDataHora(s.sinalEnviadoEm)) + (s.sinalEnviadoPor ? ' por ' + esc(s.sinalEnviadoPor) : '') + '</div>'
+        : '<button class="btn ghost block" data-acao="marcar-sinal-enviado">Marcar sinal como enviado</button>') +
+    '</div>' +
+    (souGerencia() ? confirmarSinalFormHtml(s) : '<div class="legenda-bloqueado" style="margin-top:10px">Confirmar sinal recebido exige perfil de gerência.</div>') +
+  '</div>';
+}
+
+function confirmarSinalFormHtml(s){
+  return '<div style="margin-top:14px;border-top:1px solid #F1E3D1;padding-top:14px">' +
+    '<h3 style="margin-bottom:8px">Confirmar sinal recebido</h3>' +
+    '<div class="grid2">' +
+      '<div class="campo"><label>Valor</label><input type="number" step="0.01" id="sinalValor" value="' + (Number(s.sinalValorCalculado)||0).toFixed(2) + '"></div>' +
+      '<div class="campo"><label>Forma</label>' +
+        '<div id="sinalFormaChips">' +
+          Object.keys(ROTULOS_PAG).map(function(k,i){ return '<span class="chip" data-forma="' + k + '" aria-pressed="' + (i===0?'true':'false') + '">' + ROTULOS_PAG[k] + '</span>'; }).join('') +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<button class="btn primary block" data-acao="confirmar-sinal" style="margin-top:10px">Confirmar sinal recebido</button>' +
+  '</div>';
+}
+
+function ajustarFormHtml(){
+  return '<div class="sheet-card" style="margin-top:10px"><h3>Ajustar e propor ao cliente</h3>' +
+    '<div class="grid2">' +
+      '<div class="campo"><label>Nova data (opcional)</label><input type="date" id="ajusteData"></div>' +
+      '<div class="campo"><label>Novo horário (opcional)</label><input type="time" id="ajusteHora"></div>' +
+    '</div>' +
+    '<div class="campo"><label>Desconto em R$ (opcional)</label><input type="number" step="0.01" id="ajusteDesconto" placeholder="0,00"></div>' +
+    '<div class="campo"><label>Mensagem para o cliente (obrigatório)</label><textarea id="ajusteMensagem" placeholder="Explique o que está propondo…"></textarea></div>' +
+    '<div class="acoes-sheet">' +
+      '<button class="btn primary" data-acao="enviar-ajuste">Enviar proposta ao cliente</button>' +
+      '<button class="btn ghost" data-acao="cancelar-ajustar">Cancelar</button>' +
+    '</div>' +
+    '<div class="nota">Esta fatia ainda não edita os itens do pedido — só data/horário/desconto. Mudança de itens continua pelo editor por enquanto.</div>' +
+  '</div>';
+}
+
+function rejeitarFormHtml(){
+  return '<div class="sheet-card" style="margin-top:10px"><h3>Motivo da rejeição</h3>' +
+    '<div class="campo"><textarea id="rejeitarMotivo" placeholder="Explique por que, o cliente vê este texto…"></textarea></div>' +
+    '<div class="acoes-sheet">' +
+      '<button class="btn danger" data-acao="confirmar-rejeitar">Confirmar rejeição</button>' +
+      '<button class="btn ghost" data-acao="cancelar-rejeitar">Cancelar</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function ligarAcoesDetalhe(s){
+  var body = document.getElementById('sheetBody');
+
+  var btnReiv = body.querySelector('[data-acao=reivindicar]');
+  if (btnReiv) btnReiv.addEventListener('click', function(){ reivindicarNoDetalhe(s.solicitacaoId); });
+
+  var btnAprovar = body.querySelector('[data-acao=aprovar]');
+  if (btnAprovar) btnAprovar.addEventListener('click', function(){ aprovar(s); });
+
+  var btnMostrarAjustar = body.querySelector('[data-acao=mostrar-ajustar]');
+  if (btnMostrarAjustar) btnMostrarAjustar.addEventListener('click', function(){
+    document.getElementById('formAjustar').innerHTML = ajustarFormHtml();
+    document.getElementById('formAjustar').classList.remove('hidden');
+    body.querySelector('[data-acao=cancelar-ajustar]').addEventListener('click', function(){ document.getElementById('formAjustar').classList.add('hidden'); document.getElementById('formAjustar').innerHTML=''; });
+    body.querySelector('[data-acao=enviar-ajuste]').addEventListener('click', function(){ enviarAjuste(s); });
+  });
+
+  var btnMostrarRejeitar = body.querySelector('[data-acao=mostrar-rejeitar]');
+  if (btnMostrarRejeitar) btnMostrarRejeitar.addEventListener('click', function(){
+    var alvo = document.getElementById('formRejeitar');
+    alvo.innerHTML = rejeitarFormHtml();
+    alvo.classList.remove('hidden');
+    body.querySelector('[data-acao=cancelar-rejeitar]').addEventListener('click', function(){ alvo.classList.add('hidden'); alvo.innerHTML=''; });
+    body.querySelector('[data-acao=confirmar-rejeitar]').addEventListener('click', function(){ confirmarRejeicao(s); });
+  });
+
+  var btnCopiar = body.querySelector('[data-acao=copiar-mensagem]');
+  if (btnCopiar) btnCopiar.addEventListener('click', function(){
+    try { navigator.clipboard.writeText(s.sinalMensagem); toast('Mensagem copiada.'); } catch(e){ toast('Não consegui copiar — selecione o texto manualmente.'); }
+  });
+
+  var btnSinalEnviado = body.querySelector('[data-acao=marcar-sinal-enviado]');
+  if (btnSinalEnviado) btnSinalEnviado.addEventListener('click', function(){ marcarSinalEnviado(s); });
+
+  var chips = body.querySelectorAll('#sinalFormaChips .chip');
+  chips.forEach(function(c){ c.addEventListener('click', function(){ chips.forEach(function(x){ x.setAttribute('aria-pressed','false'); }); c.setAttribute('aria-pressed','true'); }); });
+
+  var btnConfirmarSinal = body.querySelector('[data-acao=confirmar-sinal]');
+  if (btnConfirmarSinal) btnConfirmarSinal.addEventListener('click', function(){ confirmarSinal(s); });
+}
+
+async function chamarAcaoDetalhe(acao, payload, msgSucesso){
+  var s = sessaoAtual();
+  try {
+    var r = await portalApi(acao, payload, s.sessao);
+    if (!r.ok) { toast(r.erro || 'Não consegui completar a ação.'); return null; }
+    toast(msgSucesso);
+    await carregarFila();
+    return r;
+  } catch (e) {
+    toast('Não consegui falar com o servidor agora.');
+    return null;
+  }
+}
+
+async function reivindicarNoDetalhe(id){
+  var r = await chamarAcaoDetalhe('portal.reivindicar', {solicitacaoId:id}, 'Reivindicado — agora é com você.');
+  if (r) { var s = solicitacaoPorId(id); if (s) renderDetalhe(s); else fecharDetalhe(); }
+}
+
+async function aprovar(s){
+  var r = await chamarAcaoDetalhe('portal.aprovar', {solicitacaoId:s.solicitacaoId, base:s.atualizado}, 'Aprovado.');
+  if (r) fecharDetalhe();
+}
+
+async function enviarAjuste(s){
+  var mensagem = (document.getElementById('ajusteMensagem').value || '').trim();
+  if (!mensagem) { toast('Escreva a mensagem para o cliente.'); return; }
+  var data = document.getElementById('ajusteData').value || null;
+  var hora = document.getElementById('ajusteHora').value || null;
+  var desconto = document.getElementById('ajusteDesconto').value;
+  var proposta = {};
+  if (data) proposta.dataProposta = data;
+  if (hora) proposta.horaProposta = hora;
+  if (desconto) proposta.descProposto = Number(desconto);
+  var r = await chamarAcaoDetalhe('portal.ajustar', {solicitacaoId:s.solicitacaoId, base:s.atualizado, proposta:proposta, mensagem:mensagem}, 'Proposta enviada ao cliente.');
+  if (r) fecharDetalhe();
+}
+
+async function confirmarRejeicao(s){
+  var motivo = (document.getElementById('rejeitarMotivo').value || '').trim();
+  if (!motivo) { toast('Explique o motivo da rejeição.'); return; }
+  var r = await chamarAcaoDetalhe('portal.rejeitar', {solicitacaoId:s.solicitacaoId, base:s.atualizado, motivo:motivo}, 'Solicitação rejeitada.');
+  if (r) fecharDetalhe();
+}
+
+async function marcarSinalEnviado(s){
+  var r = await chamarAcaoDetalhe('portal.marcarSinalEnviado', {solicitacaoId:s.solicitacaoId, base:s.atualizado}, 'Marcado como enviado.');
+  if (r) { var atual = solicitacaoPorId(s.solicitacaoId); if (atual) renderDetalhe(atual); }
+}
+
+async function confirmarSinal(s){
+  var valor = Number(document.getElementById('sinalValor').value);
+  var formaEl = document.querySelector('#sinalFormaChips .chip[aria-pressed=true]');
+  var forma = formaEl ? ROTULOS_PAG[formaEl.getAttribute('data-forma')] : 'Pix';
+  if (!valor) { toast('Informe o valor recebido.'); return; }
+  var r = await chamarAcaoDetalhe('portal.confirmarSinal', {solicitacaoId:s.solicitacaoId, base:s.atualizado, pagamento:{valor:valor, forma:forma}}, 'Sinal confirmado — virou pedido.');
+  if (r) fecharDetalhe();
+}
+
+document.getElementById('busca').addEventListener('input', function(){ renderFila(this.value); });
+
+/* ---------- Início ---------- */
+
+(function iniciar(){
+  var s = sessaoAtual();
+  if (s && s.sessao) mostrarApp(s);
+  else mostrarLogin();
+})();
+
+})();
+</script>
+</body>
+</html>
