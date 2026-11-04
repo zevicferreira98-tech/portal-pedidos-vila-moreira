@@ -68,6 +68,10 @@
   #app header h1{font-size:19px;color:var(--brand-strong)}
   .quemsou{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
   .quemsou b{color:var(--ink)}
+  .som-toggle{display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none}
+  .som-toggle input{margin:0}
+  @keyframes piscar{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+  .bloco-h .n.aviso{animation:piscar .5s ease-in-out 3}
   main{max-width:960px;margin:0 auto;padding:20px}
   .busca{width:100%;padding:11px 14px;border:1px solid #E3D3BF;border-radius:var(--rb);font-size:14px;background:var(--card);color:var(--ink);margin-bottom:20px}
 
@@ -165,6 +169,10 @@
   <header>
     <h1>Solicitações</h1>
     <div class="quemsou">
+      <label class="som-toggle" title="Tocar um som quando chegar solicitação nova">
+        <input type="checkbox" id="chkSom"> 🔔 Som
+      </label>
+      <button id="btnConfigSinal" class="btn ghost hidden" style="width:auto;padding:6px 12px;font-size:13px" title="Configurar percentual de sinal">⚙️ Sinal</button>
       <span><b id="quemNome"></b> · <span id="quemPerfil"></span></span>
       <button id="btnSair" class="btn ghost" style="width:auto;padding:6px 12px;font-size:13px">Sair</button>
     </div>
@@ -254,7 +262,10 @@ function mostrarApp(sessaoObj){
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('quemNome').textContent = sessaoObj.nome;
   document.getElementById('quemPerfil').textContent = sessaoObj.perfil;
+  document.getElementById('btnConfigSinal').classList.toggle('hidden', sessaoObj.perfil !== 'Administrador');
+  idsUrgentesConhecidos = null;
   carregarFila();
+  iniciarPolling();
 }
 
 function mostrarLogin(mensagemErro){
@@ -293,6 +304,7 @@ document.getElementById('formLogin').addEventListener('submit', function(ev){
 
 document.getElementById('btnSair').addEventListener('click', async function(){
   var s = sessaoAtual();
+  pararPolling();
   limparSessao();
   mostrarLogin();
   if (s && s.sessao) { try { await portalApi('portal.sairEquipe', {sessao:s.sessao}); } catch(e){ /* melhor esforco */ } }
@@ -301,6 +313,14 @@ document.getElementById('btnSair').addEventListener('click', async function(){
 /* ---------- Fila ---------- */
 
 var ultimaFila = [];
+
+/** IDs do bloco "Precisa de você agora" na última atualização - usado só pra saber
+ * se uma chegada é NOVA (comparar com o poll anterior), nunca pra decidir o que mostrar. */
+var idsUrgentesConhecidos = null; // null = ainda não temos baseline (1º carregamento não alerta nada)
+
+function idsUrgentes(fila){
+  return fila.filter(function(s){ return s.status === 'enviada' || s.status === 'sinal_solicitado'; }).map(function(s){ return s.solicitacaoId; });
+}
 
 async function carregarFila(){
   var s = sessaoAtual();
@@ -318,11 +338,91 @@ async function carregarFila(){
       return;
     }
     ultimaFila = r.solicitacoes || [];
+    idsUrgentesConhecidos = idsUrgentes(ultimaFila); // baseline - 1ª carga nunca alerta
     renderFila(document.getElementById('busca').value);
   } catch (e) {
     wrap.innerHTML = '<div class="sem-itens">Não consegui falar com o servidor agora.</div>';
   }
 }
+
+/* ---------- Aviso de solicitação nova (polling periódico + som opcional) ---------- */
+
+var POLL_MS = 25000;
+var pollTimer = null;
+var somAtivado = localStorage.getItem('painelSom') === '1';
+var audioCtx = null;
+var tituloOriginal = document.title;
+
+function iniciarPolling(){
+  pararPolling();
+  pollTimer = setInterval(pollSilencioso, POLL_MS);
+}
+function pararPolling(){ if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) { pararPolling(); }
+  // Ao voltar: checa o que chegou enquanto a aba estava em segundo plano (pollSilencioso,
+  // que COMPARA com a baseline) - nunca carregarFila() aqui, que reescreve a baseline direto
+  // e faria uma solicitação chegada durante a ausência nunca ser avisada.
+  else if (sessaoAtual()) { pollSilencioso(); iniciarPolling(); }
+});
+window.addEventListener('focus', function(){ document.title = tituloOriginal; });
+
+/** Poll "quieto": nunca mostra erro de rede ao balconista (ele não pediu essa atualização) - só atualiza
+ * a lista e avisa se achar solicitação nova. Se falhar, tenta de novo no próximo ciclo, sem alarde. */
+async function pollSilencioso(){
+  var s = sessaoAtual();
+  if (!s) { pararPolling(); return; }
+  try {
+    var r = await portalApi('portal.listarFila', {}, s.sessao);
+    if (!r.ok) return;
+    var novaFila = r.solicitacoes || [];
+    var idsAgora = idsUrgentes(novaFila);
+    var novos = idsUrgentesConhecidos ? idsAgora.filter(function(id){ return idsUrgentesConhecidos.indexOf(id) === -1; }) : [];
+    ultimaFila = novaFila;
+    idsUrgentesConhecidos = idsAgora;
+    renderFila(document.getElementById('busca').value);
+    if (novos.length) avisarNovaChegada(novos.length);
+  } catch (e) { /* silencioso - próximo ciclo tenta de novo */ }
+}
+
+function avisarNovaChegada(qtd){
+  toast(qtd === 1 ? 'Chegou 1 solicitação nova.' : 'Chegaram ' + qtd + ' solicitações novas.');
+  document.title = '🔔 Nova solicitação — ' + tituloOriginal;
+  var badge = document.querySelector('.bloco.destaque .bloco-h .n');
+  if (badge) { badge.classList.remove('aviso'); void badge.offsetWidth; badge.classList.add('aviso'); }
+  tocarBip();
+}
+
+/** Beep sintetizado (Web Audio) - sem arquivo de áudio externo, sem dependência nova. Só toca se o
+ * balconista ligou o toggle (gesto do próprio clique já desbloqueia autoplay no navegador). */
+function tocarBip(){
+  if (!somAtivado) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    [0, 0.18].forEach(function(atraso){
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.frequency.value = 880; g.gain.value = 0.001;
+      var t0 = audioCtx.currentTime + atraso;
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      o.start(t0); o.stop(t0 + 0.17);
+    });
+  } catch (e) { /* som é conveniência, nunca pode quebrar o painel */ }
+}
+
+document.getElementById('chkSom').addEventListener('change', function(){
+  somAtivado = this.checked;
+  localStorage.setItem('painelSom', somAtivado ? '1' : '0');
+  if (somAtivado) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+});
+document.getElementById('chkSom').checked = somAtivado;
 
 function renderFila(filtroTexto){
   var wrap = document.getElementById('filaWrap');
@@ -665,6 +765,58 @@ async function confirmarSinal(s){
 }
 
 document.getElementById('busca').addEventListener('input', function(){ renderFila(this.value); });
+
+/* ---------- Configurar % de sinal (só gerência - botão já fica escondido pra Balcão, mas o
+   servidor é quem decide de verdade: portal.configurarRegraSinal exige nivel 'gerencia'). ---------- */
+
+document.getElementById('btnConfigSinal').addEventListener('click', abrirConfigSinal);
+
+async function abrirConfigSinal(){
+  var s = sessaoAtual();
+  if (!s) return;
+  document.getElementById('sheetOverlay').classList.remove('hidden');
+  document.getElementById('sheet').classList.remove('hidden');
+  document.getElementById('sheetNome').textContent = 'Configurar sinal';
+  document.getElementById('sheetStatus').textContent = '';
+  document.getElementById('sheetStatus').className = 'status';
+  document.getElementById('sheetBody').innerHTML = '<div class="sheet-card"><p style="font-size:13px;margin:0">Carregando percentual atual…</p></div>';
+  try {
+    var r = await portalApi('portal.configurarRegraSinal', {}, s.sessao);
+    if (!r.ok) {
+      document.getElementById('sheetBody').innerHTML = '<div class="sheet-card"><p style="font-size:13px;color:var(--danger)">' + esc(r.erro || 'Não consegui carregar.') + '</p></div>';
+      return;
+    }
+    document.getElementById('sheetBody').innerHTML = configSinalHtml(r.percentualAtivo);
+    document.getElementById('btnSalvarSinal').addEventListener('click', salvarConfigSinal);
+  } catch (e) {
+    document.getElementById('sheetBody').innerHTML = '<div class="sheet-card"><p style="font-size:13px;color:var(--danger)">Não consegui falar com o servidor agora.</p></div>';
+  }
+}
+
+function configSinalHtml(percentualAtual){
+  return '<div class="sheet-card"><h3>Percentual de sinal</h3>' +
+    '<p style="font-size:13px;color:var(--muted);margin:0 0 12px">Vale a partir de agora, só em solicitações aprovadas depois desta mudança. Pedidos já confirmados não mudam. Padrão de fábrica: 50%.</p>' +
+    '<div class="campo"><label>Percentual (%)</label><input type="number" id="sinalPercentualInput" min="0" max="100" step="1" value="' + Number(percentualAtual) + '"></div>' +
+    '<button class="btn primary block" id="btnSalvarSinal">Salvar</button>' +
+  '</div>';
+}
+
+async function salvarConfigSinal(){
+  var s = sessaoAtual();
+  var v = Number(document.getElementById('sinalPercentualInput').value);
+  if (isNaN(v) || v < 0 || v > 100) { toast('Informe um percentual entre 0 e 100.'); return; }
+  var btn = document.getElementById('btnSalvarSinal');
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  try {
+    var r = await portalApi('portal.configurarRegraSinal', {percentual:v}, s.sessao);
+    if (!r.ok) { toast(r.erro || 'Não consegui salvar.'); btn.disabled = false; btn.textContent = 'Salvar'; return; }
+    toast('Sinal padrão atualizado para ' + r.percentualAtivo + '%.');
+    fecharDetalhe();
+  } catch (e) {
+    toast('Não consegui falar com o servidor agora.');
+    btn.disabled = false; btn.textContent = 'Salvar';
+  }
+}
 
 /* ---------- Início ---------- */
 

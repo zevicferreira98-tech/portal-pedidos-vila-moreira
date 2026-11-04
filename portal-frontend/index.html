@@ -363,34 +363,47 @@ a{color:inherit;}
   </div>
 </section>
 
-<!-- ===================== VIEW: STATUS (carimbo) ===================== -->
+<!-- ===================== VIEW: STATUS (carimbo + acompanhamento) ===================== -->
 <section class="view" id="view-status">
   <div class="status-wrap">
-    <div class="stamp">
+    <div class="stamp" id="statusStamp">
       <div class="ring-b"></div>
       <div class="ring-a">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-        <b>AGUARDANDO<br>APROVAÇÃO</b>
+        <b id="statusBadge">AGUARDANDO<br>APROVAÇÃO</b>
       </div>
     </div>
-    <h1>Comanda enviada</h1>
-    <p class="sub">A padaria já recebeu — falta só confirmar.</p>
+    <h1 id="statusTitulo">Comanda enviada</h1>
+    <p class="sub" id="statusSub">A padaria já recebeu — falta só confirmar.</p>
 
-    <div class="status-card">
+    <div class="status-card" id="statusCard">
       <div class="srow"><span>Nº da solicitação</span><span id="stNum">—</span></div>
       <div class="srow"><span>Retirada</span><span id="stWhen">—</span></div>
       <div class="srow"><span>Itens</span><span id="stItems">—</span></div>
       <div class="srow"><span>Total</span><span id="stTotal">—</span></div>
     </div>
 
-    <div class="steps">
-      <div class="step-row done"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div><span>Comanda enviada</span></div>
-      <div class="step-row current"><div class="dot"></div><span>Em análise da padaria</span></div>
-      <div class="step-row"><div class="dot"></div><span>Confirmada</span></div>
-      <div class="step-row"><div class="dot"></div><span>Pronta para retirada</span></div>
+    <div class="steps" id="statusSteps">
+      <div class="step-row" id="passo1"><div class="dot"></div><span>Comanda enviada</span></div>
+      <div class="step-row" id="passo2"><div class="dot"></div><span>Em análise da padaria</span></div>
+      <div class="step-row" id="passo3"><div class="dot"></div><span>Confirmada</span></div>
+      <div class="step-row" id="passo4"><div class="dot"></div><span>Pedido confirmado</span></div>
     </div>
 
-    <p class="foot-note">Confirmação pelo WhatsApp informado. Item em falta no horário escolhido? A padaria entra em contato pra ajustar.</p>
+    <div class="note-box" id="linkBox" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.41 1.41"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.41-1.41"/></svg>
+      <div>
+        <b>Guarde este link</b>
+        <p>Use-o pra acompanhar sua comanda e responder a qualquer ajuste, mesmo depois de fechar esta página.</p>
+        <button type="button" class="btn-ghost" id="btnCopiarLink" style="margin-top:8px;width:auto;">Copiar link de acompanhamento</button>
+      </div>
+    </div>
+
+    <div class="note-box warn" id="ajusteBox" style="display:none;"></div>
+    <div class="note-box" id="sinalBox" style="display:none;"></div>
+    <div class="note-box warn" id="erroAcompanhar" style="display:none;"></div>
+
+    <p class="foot-note" id="statusFoot">Confirmação pelo WhatsApp informado. Item em falta no horário escolhido? A padaria entra em contato pra ajustar.</p>
     <button class="btn-ghost" data-goto="catalogo">Voltar ao cardápio</button>
   </div>
 </section>
@@ -439,8 +452,17 @@ var selectedCat = 'all';
 var selectedDateIdx = 0;
 var selectedTime = null;
 var dateOptions = [];
+var trackSol = null, trackTok = null; // solicitação/verificador da tela de acompanhamento atual
 
 function money(v){ return 'R$ ' + v.toFixed(2).replace('.', ','); }
+
+/** Mesma whitelist de S17 (PORTAL-SEGURANCA.md) que o painel interno já usa: texto livre do
+ * servidor (mensagem de ajuste, sinalMensagem) só é seguro se escapado ANTES de virar innerHTML. */
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
 
 (function greet(){
   var h = new Date().getHours();
@@ -704,10 +726,16 @@ document.getElementById('submitBtn').addEventListener('click', function(){
     var item = findItemById(id);
     return { pid: id, nome: cart[id].name, un: (item && item.un) || 'un', preco: cart[id].price, modo: 'un', qtd: cart[id].qty };
   });
+  // Token de acompanhamento: gerado no cliente, imprevisível, nunca reaproveitado
+  // entre solicitações diferentes - é o "verificador" que o backend já exige
+  // (campo dispositivoToken, AcoesPublicas.gs/verificadorBate_) para liberar
+  // consultarSolicitacao/responderAjuste sem depender só do número sequencial.
+  var tokenAcompanhamento = gerarTokenDispositivo();
   var payload = {
     cliente: nome.value.trim(), fone: whats.value.trim(), tipo: 'Retirada na loja',
     data: dateOptions[selectedDateIdx].iso, hora: hora, linhas: linhas,
-    obs: document.getElementById('inpObs').value.trim() || undefined
+    obs: document.getElementById('inpObs').value.trim() || undefined,
+    dispositivoToken: tokenAcompanhamento
   };
 
   var btn = this;
@@ -715,10 +743,15 @@ document.getElementById('submitBtn').addEventListener('click', function(){
   portalApi('portal.criarSolicitacao', payload).then(function(resp){
     btn.classList.remove('loading'); btn.disabled = false;
     if (!resp.ok){ showToast(resp.erro || 'Não consegui enviar. Tente novamente.'); return; }
-    document.getElementById('stNum').textContent = '#' + resp.solicitacaoId;
-    document.getElementById('stWhen').textContent = dateOptions[selectedDateIdx].label + ' · ' + selectedTime;
-    document.getElementById('stItems').textContent = cartCount() + (cartCount()===1?' item':' itens');
-    document.getElementById('stTotal').textContent = money(cartTotalValue());
+    trackSol = resp.solicitacaoId; trackTok = tokenAcompanhamento;
+    renderStatusView({
+      solicitacaoId: resp.solicitacaoId, status: resp.status || 'enviada',
+      quando: dateOptions[selectedDateIdx].label + ' · ' + selectedTime,
+      itensTexto: cartCount() + (cartCount()===1?' item':' itens'),
+      totalTexto: money(cartTotalValue()),
+      link: montarLinkAcompanhamento(resp.solicitacaoId, tokenAcompanhamento)
+    });
+    history.replaceState(null, '', montarLinkAcompanhamento(resp.solicitacaoId, tokenAcompanhamento));
     cart = {};
     renderBuySlots();
     goTo('status');
@@ -730,8 +763,206 @@ document.getElementById('submitBtn').addEventListener('click', function(){
   });
 });
 
+/* ===================== Acompanhamento (link persistente + resposta a ajuste) ===================== */
+
+var CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+/** Token imprevisível gerado no cliente (nunca sequencial) - ver nota no handler de envio. */
+function gerarTokenDispositivo(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+  return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+function montarLinkAcompanhamento(sol, tok){
+  var url = new URL(location.href);
+  url.search = ''; url.hash = '';
+  url.searchParams.set('sol', sol);
+  url.searchParams.set('tok', tok);
+  return url.toString();
+}
+
+function formatarDataBR(iso){
+  if (!iso) return '';
+  var p = String(iso).split('-');
+  return p.length === 3 ? (p[2] + '/' + p[1]) : iso;
+}
+
+var STATUS_INFO = {
+  enviada:                   { badge:'AGUARDANDO<br>APROVAÇÃO', titulo:'Comanda enviada',            sub:'A padaria já recebeu — falta só confirmar.' },
+  em_analise:                { badge:'EM<br>ANÁLISE',           titulo:'Em análise',                 sub:'A equipe está conferindo sua comanda agora.' },
+  aprovada:                  { badge:'APROVADA',                titulo:'Aprovada',                   sub:'Sua comanda foi aprovada pela padaria.' },
+  ajustada:                  { badge:'AJUSTE<br>PROPOSTO',      titulo:'A padaria propôs um ajuste', sub:'Confira abaixo e responda quando puder.' },
+  aguardando_aceite_cliente: { badge:'AJUSTE<br>PROPOSTO',      titulo:'A padaria propôs um ajuste', sub:'Confira abaixo e responda quando puder.' },
+  rejeitada:                 { badge:'NÃO<br>APROVADA',         titulo:'Não aprovada',               sub:'Essa solicitação não foi aprovada pela padaria.' },
+  expirada:                  { badge:'EXPIROU',                 titulo:'Expirou',                    sub:'Essa solicitação expirou sem resposta.' },
+  sinal_solicitado:          { badge:'FALTA<br>O SINAL',        titulo:'Confirmada — falta o sinal', sub:'Confira abaixo como pagar.' },
+  convertida:                { badge:'CONFIRMADO',              titulo:'Pedido confirmado',          sub:'Seu pedido está confirmado na padaria.' }
+};
+// Só os status do caminho linear feliz entram no "trilho" de 4 passos -
+// os demais (ajuste pendente/rejeitada/expirada) escondem o trilho e
+// mostram o cartão de aviso certo em vez disso (ver renderStatusView).
+var PASSO_POR_STATUS = { enviada:1, em_analise:2, aprovada:3, sinal_solicitado:3, convertida:4 };
+
+function renderStatusView(dados){
+  var info = STATUS_INFO[dados.status] || STATUS_INFO.enviada;
+  document.getElementById('statusStamp').style.display = '';
+  document.getElementById('statusBadge').innerHTML = info.badge;
+  document.getElementById('statusTitulo').textContent = info.titulo;
+  document.getElementById('statusSub').textContent = info.sub;
+
+  document.getElementById('statusCard').style.display = '';
+  document.getElementById('stNum').textContent = '#' + dados.solicitacaoId;
+  document.getElementById('stWhen').textContent = dados.quando || '—';
+  document.getElementById('stItems').textContent = dados.itensTexto || '—';
+  document.getElementById('stTotal').textContent = dados.totalTexto || '—';
+
+  var passo = PASSO_POR_STATUS[dados.status];
+  var stepsEl = document.getElementById('statusSteps');
+  stepsEl.style.display = passo ? '' : 'none';
+  if (passo) {
+    for (var i=1;i<=4;i++){
+      var el = document.getElementById('passo'+i), dot = el.querySelector('.dot');
+      el.classList.remove('done','current');
+      if (i < passo){ el.classList.add('done'); dot.innerHTML = CHECK_SVG; }
+      else { dot.innerHTML = ''; if (i === passo) el.classList.add('current'); }
+    }
+  }
+
+  var linkEl = document.getElementById('linkBox');
+  if (dados.link){ window._linkAcompanhamento = dados.link; linkEl.style.display = 'flex'; }
+  else linkEl.style.display = 'none';
+
+  var ajusteEl = document.getElementById('ajusteBox');
+  if (dados.ajustePendente){
+    ajusteEl.style.display = 'flex';
+    ajusteEl.innerHTML = montarAjusteHTML(dados.ajustePendente);
+    ligarBotoesAjuste();
+  } else { ajusteEl.style.display = 'none'; ajusteEl.innerHTML = ''; }
+
+  var sinalEl = document.getElementById('sinalBox');
+  if (dados.status === 'sinal_solicitado' && dados.sinalMensagem){
+    sinalEl.style.display = 'flex';
+    sinalEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><div><b>Como pagar o sinal</b><p>'+esc(dados.sinalMensagem)+'</p></div>';
+  } else { sinalEl.style.display = 'none'; sinalEl.innerHTML = ''; }
+
+  document.getElementById('erroAcompanhar').style.display = 'none';
+}
+
+function montarAjusteHTML(ajuste){
+  var linhas = '';
+  if (ajuste.dataProposta || ajuste.horaProposta){
+    linhas += '<div class="srow"><span>Nova retirada</span><span>'+esc((ajuste.dataProposta?formatarDataBR(ajuste.dataProposta):'')+(ajuste.horaProposta?' às '+ajuste.horaProposta:''))+'</span></div>';
+  }
+  if (ajuste.taxaProposta != null){
+    linhas += '<div class="srow"><span>Taxa de entrega</span><span>'+money(ajuste.taxaProposta)+'</span></div>';
+  }
+  if (ajuste.linhasPropostas && ajuste.linhasPropostas.length){
+    linhas += '<div class="srow"><span>Itens</span><span>Revisados pela padaria</span></div>';
+  }
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>' +
+    '<div style="flex:1;">' +
+      '<b>A padaria propôs:</b>' +
+      '<p style="margin:6px 0 10px;">'+esc(ajuste.mensagem || '')+'</p>' +
+      (linhas ? '<div class="status-card" style="margin:0 0 4px;">'+linhas+'</div>' : '') +
+      '<button type="button" class="btn-primary" id="btnAceitarAjuste"><span class="spinner"></span><span class="btn-label">Aceitar ajuste</span></button>' +
+      '<button type="button" class="btn-ghost" id="btnRecusarAjuste">Recusar</button>' +
+    '</div>';
+}
+
+var ajusteEmAndamento = false;
+function ligarBotoesAjuste(){
+  var btnA = document.getElementById('btnAceitarAjuste'), btnR = document.getElementById('btnRecusarAjuste');
+  if (btnA) btnA.addEventListener('click', function(){ responderAjusteCliente('aceitar', btnA, btnR); });
+  if (btnR) btnR.addEventListener('click', function(){ responderAjusteCliente('recusar', btnA, btnR); });
+}
+
+/** Trata clique duplo (guarda em memória), proposta desatualizada (recarrega o estado real
+ * em vez de confiar na tela antiga) e falha de rede (reabilita os botões pra tentar de novo). */
+function responderAjusteCliente(resposta, btnA, btnR){
+  if (ajusteEmAndamento) return;
+  if (!trackSol || !trackTok){ showToast('Link de acompanhamento inválido.'); return; }
+  ajusteEmAndamento = true;
+  btnA.classList.add('loading'); btnA.disabled = true; btnR.disabled = true;
+  portalApi('portal.responderAjuste', {solicitacaoId:trackSol, verificador:trackTok, resposta:resposta}).then(function(resp){
+    ajusteEmAndamento = false;
+    btnA.classList.remove('loading'); btnA.disabled = false; btnR.disabled = false;
+    if (!resp.ok){
+      if (resp.codigo === 'estado_invalido'){
+        showToast('Essa proposta não está mais disponível — atualizando…');
+        carregarAcompanhamento(trackSol, trackTok);
+        return;
+      }
+      showToast(resp.erro || 'Não consegui registrar sua resposta. Tente de novo.');
+      return;
+    }
+    showToast(resposta === 'aceitar' ? 'Ajuste aceito!' : 'Ajuste recusado.');
+    carregarAcompanhamento(trackSol, trackTok);
+  }).catch(function(e){
+    ajusteEmAndamento = false;
+    btnA.classList.remove('loading'); btnA.disabled = false; btnR.disabled = false;
+    showToast('Erro de conexão: ' + e.message);
+  });
+}
+
+function renderErroAcompanhamento(msg){
+  document.getElementById('statusStamp').style.display = 'none';
+  document.getElementById('statusTitulo').textContent = 'Não encontrei essa comanda';
+  document.getElementById('statusSub').textContent = '';
+  document.getElementById('statusCard').style.display = 'none';
+  document.getElementById('statusSteps').style.display = 'none';
+  document.getElementById('linkBox').style.display = 'none';
+  document.getElementById('ajusteBox').style.display = 'none';
+  document.getElementById('sinalBox').style.display = 'none';
+  var el = document.getElementById('erroAcompanhar');
+  el.style.display = 'flex';
+  el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><div><b>'+esc(msg)+'</b></div>';
+}
+
+async function carregarAcompanhamento(sol, tok){
+  trackSol = sol; trackTok = tok;
+  try {
+    var resp = await portalApi('portal.consultarSolicitacao', {solicitacaoId: sol, verificador: tok});
+    if (!resp.ok){
+      renderErroAcompanhamento(resp.erro || 'Não encontrei essa comanda com esse link.');
+      goTo('status');
+      return;
+    }
+    var r = resp.resumo || {};
+    renderStatusView({
+      solicitacaoId: sol, status: resp.status,
+      quando: formatarDataBR(r.data) + (r.hora ? ' às ' + r.hora : ''),
+      itensTexto: (r.itens||0) + ((r.itens===1)?' item':' itens'),
+      totalTexto: money(r.totalEstimado||0),
+      ajustePendente: resp.ajustePendente || null,
+      sinalMensagem: resp.sinalMensagem || null,
+      link: montarLinkAcompanhamento(sol, tok)
+    });
+    goTo('status');
+  } catch (e) {
+    renderErroAcompanhamento('Não consegui falar com o servidor agora. Verifique sua conexão e tente de novo.');
+    goTo('status');
+  }
+}
+
+document.getElementById('btnCopiarLink').addEventListener('click', function(){
+  var link = window._linkAcompanhamento;
+  if (!link) return;
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(link).then(function(){ showToast('Link copiado!'); }).catch(function(){ showToast('Não consegui copiar — copie direto da barra de endereço.'); });
+  } else {
+    showToast('Copie direto da barra de endereço.');
+  }
+});
+
 carregarCatalogoReal();
 updateAllCartUI();
+
+// Reabre o acompanhamento se a página foi carregada com o link salvo (?sol=&tok=).
+(function iniciarAcompanhamentoSeHouverLink(){
+  var params = new URLSearchParams(location.search);
+  var sol = params.get('sol'), tok = params.get('tok');
+  if (sol && tok) carregarAcompanhamento(sol, tok);
+})();
 
 })();
 </script>
