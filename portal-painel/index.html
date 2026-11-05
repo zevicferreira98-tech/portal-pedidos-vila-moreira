@@ -553,7 +553,8 @@ function renderDetalhe(s){
   var linhas = s.linhas || [];
   html += '<div class="sheet-card"><h3>Itens</h3><div class="lines">' +
     linhas.map(function(l){
-      return '<div class="line"><span>' + (l.qtd || 1) + 'x ' + esc(l.nome || l.produtoId || '') + '</span><span>' + money((l.preco||0) * (l.qtd||1)) + '</span></div>';
+      var subLinha = l.un === 'cento' ? (l.qtd||0) / 100 * (l.preco||0) : (l.preco||0) * (l.qtd||1);
+      return '<div class="line"><span>' + (l.qtd || 1) + 'x ' + esc(l.nome || l.produtoId || '') + '</span><span>' + money(subLinha) + '</span></div>';
     }).join('') +
     '</div><div class="totals"><span>Total estimado</span><span>' + money(s.totalEstimado) + '</span></div></div>';
 
