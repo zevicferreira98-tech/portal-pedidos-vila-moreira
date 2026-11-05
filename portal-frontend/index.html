@@ -55,6 +55,13 @@ a{color:inherit;}
 
 .topnav-links{display:none;}
 
+/* ===== busca de produto ===== */
+.searchrow{position:relative;max-width:1200px;margin:0 auto 9px;}
+.searchrow .search-ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--soft);pointer-events:none;}
+.searchrow input{width:100%;padding:10px 36px;border:1px solid var(--line);border-radius:var(--r-pill);background:var(--surface);font-size:13.5px;color:var(--ink);font-family:inherit;}
+.searchrow input:focus-visible{outline:2.5px solid var(--brand-strong);outline-offset:1px;}
+.searchrow .search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--soft);font-size:17px;line-height:1;padding:6px;cursor:pointer;}
+
 /* ===== chips de categoria (fixo) ===== */
 .chipbar{position:sticky;top:var(--bar-h);z-index:54;background:var(--bg);border-bottom:1px solid var(--line);padding:11px 16px;}
 .chiprow{display:flex;gap:7px;overflow-x:auto;max-width:1200px;margin:0 auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
@@ -265,6 +272,11 @@ a{color:inherit;}
 <section class="view active" id="view-catalogo">
 
   <div class="chipbar">
+    <div class="searchrow">
+      <svg class="search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" id="buscaProduto" inputmode="search" enterkeyhint="search" placeholder="Buscar produto no cardápio…" autocomplete="off" aria-label="Buscar produto no cardápio">
+      <button type="button" class="search-clear" id="btnLimparBusca" aria-label="Limpar busca" style="display:none;">×</button>
+    </div>
     <div class="chiprow" id="catChips">
       <button class="chip selected" data-cat="all">Tudo</button>
       <!-- demais chips geradas via JS a partir das categorias reais do catálogo -->
@@ -456,6 +468,14 @@ var CATALOG = [];
 
 var cart = {};
 var selectedCat = 'all';
+var searchQuery = '';
+
+function normalizarBusca(s){
+  // NFD separa acento de letra (ex. "ã" -> "a"+acento); a classe do regex
+  // abaixo cobre U+0300-U+036F (marcas de acento combinantes) e remove só
+  // o acento, mantendo a letra - assim "pao"/"maçã" acham "Pão"/"Maca".
+  return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
 var selectedDateIdx = 0;
 var dateOptions = [];
 var trackSol = null, trackTok = null; // solicitação/verificador da tela de acompanhamento atual
@@ -553,10 +573,17 @@ async function carregarCatalogoReal(){
       if (!porCategoria[cat]) porCategoria[cat] = [];
       porCategoria[cat].push({id:p.pid, name:p.nome, price:p.preco, un:p.un, gUn:p.gUn});
     });
-    CATALOG = Object.keys(porCategoria).map(function(cat){
+    // Ordem alfabética (pt-BR) em vez da ordem crua da planilha - "Outros"
+    // sempre por último, por ser a categoria "resto" sem identidade própria.
+    var categoriasOrdenadas = Object.keys(porCategoria).sort(function(a, b){
+      if (a === 'Outros') return 1;
+      if (b === 'Outros') return -1;
+      return a.localeCompare(b, 'pt-BR');
+    });
+    CATALOG = categoriasOrdenadas.map(function(cat){
       return {cat:cat, title:cat, tint:'rgba(166,97,66,.09)', items:porCategoria[cat]};
     });
-    buildCategoryChips(Object.keys(porCategoria));
+    buildCategoryChips(categoriasOrdenadas);
     renderCatalog();
   } catch (e){
     root.innerHTML = '<p style="padding:20px;color:var(--alert-fg);">Não consegui carregar o cardápio: ' + e.message + '</p>';
@@ -577,14 +604,23 @@ function buildCategoryChips(cats){
 function renderCatalog(){
   var root = document.getElementById('catalog');
   root.innerHTML = '';
+  var termo = normalizarBusca(searchQuery);
+  var algumResultado = false;
   CATALOG.forEach(function(group){
-    if (selectedCat !== 'all' && selectedCat !== group.cat) return;
+    // Buscando: ignora o chip de categoria selecionado e varre tudo: o
+    // ponto da busca é não precisar navegar categoria por categoria.
+    if (!termo && selectedCat !== 'all' && selectedCat !== group.cat) return;
+    var items = termo
+      ? group.items.filter(function(item){ return normalizarBusca(item.name).indexOf(termo) !== -1; })
+      : group.items;
+    if (!items.length) return;
+    algumResultado = true;
     var sec = document.createElement('div');
     sec.className = 'catsec';
     var h = document.createElement('h2'); h.textContent = group.title;
     sec.appendChild(h);
     var grid = document.createElement('div'); grid.className = 'tilegrid';
-    group.items.forEach(function(item){
+    items.forEach(function(item){
       var tile = document.createElement('div');
       tile.className = 'tile';
       tile.style.background = group.tint;
@@ -597,6 +633,9 @@ function renderCatalog(){
     sec.appendChild(grid);
     root.appendChild(sec);
   });
+  if (!algumResultado){
+    root.innerHTML = '<p style="padding:20px;color:var(--soft);">Nenhum produto encontrado' + (termo ? ' para "' + esc(searchQuery) + '"' : '') + '.</p>';
+  }
   renderBuySlots();
 }
 
@@ -646,6 +685,34 @@ document.getElementById('catChips').addEventListener('click', function(e){
   document.querySelectorAll('#catChips .chip').forEach(function(c){c.classList.remove('selected');});
   btn.classList.add('selected');
   selectedCat = btn.dataset.cat;
+  // Escolher uma categoria explicitamente cancela uma busca em andamento -
+  // os dois filtros juntos confundiriam mais do que ajudariam.
+  if (searchQuery){
+    searchQuery = '';
+    document.getElementById('buscaProduto').value = '';
+    document.getElementById('btnLimparBusca').style.display = 'none';
+  }
+  renderCatalog();
+});
+
+document.getElementById('buscaProduto').addEventListener('input', function(e){
+  searchQuery = e.target.value;
+  document.getElementById('btnLimparBusca').style.display = searchQuery ? '' : 'none';
+  if (searchQuery){
+    document.querySelectorAll('#catChips .chip').forEach(function(c){c.classList.remove('selected');});
+    var chipTudo = document.querySelector('#catChips .chip[data-cat="all"]');
+    if (chipTudo) chipTudo.classList.add('selected');
+    selectedCat = 'all';
+  }
+  renderCatalog();
+});
+
+document.getElementById('btnLimparBusca').addEventListener('click', function(){
+  searchQuery = '';
+  var input = document.getElementById('buscaProduto');
+  input.value = '';
+  input.focus();
+  document.getElementById('btnLimparBusca').style.display = 'none';
   renderCatalog();
 });
 
