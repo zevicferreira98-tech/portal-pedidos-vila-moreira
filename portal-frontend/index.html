@@ -454,8 +454,20 @@ var trackSol = null, trackTok = null; // solicitação/verificador da tela de ac
 
 function money(v){ return 'R$ ' + v.toFixed(2).replace('.', ','); }
 
-/** Produtos por kg aceitam fração (padaria vende 300g, 500g...); os demais (un, cento) são sempre inteiros. */
-function passoQtd(un){ return un === 'kg' ? 0.1 : 1; }
+/** Produtos por kg aceitam fração (padaria vende 300g, 500g...); os demais (un, cento) são sempre inteiros.
+ * "cento" anda de 10 em 10 (pedido mínimo de 50 - ver minimoQtd abaixo): preço é por lote de 100
+ * unidades, mas o cliente escolhe a quantidade de peças que quiser, igual uma padaria de verdade
+ * vende "meio cento", "cento e meio" etc. (achado real 2026-11-05: Brigadeiro Festa/Beijinho Festa
+ * cobravam 100x menos porque o carrinho tratava "cento" igual "un" comum). */
+function passoQtd(un){ if (un === 'kg') return 0.1; if (un === 'cento') return 10; return 1; }
+/** Quantidade mínima pra um item ficar na comanda - pra "cento" é 50 (decisão do usuário, 2026-11-05);
+ * pros demais é o próprio passo (1 unidade ou 100g), mesmo comportamento de sempre. */
+function minimoQtd(un){ return un === 'cento' ? 50 : passoQtd(un); }
+/** Preço por cento é por lote de 100 - total da linha é proporcional à quantidade de peças pedida. */
+function precoLinha(qty, preco, un){
+  var bruto = un === 'cento' ? (qty / 100) * preco : qty * preco;
+  return Math.round(bruto * 100) / 100;
+}
 function formatQtd(qty, un){
   if (un !== 'kg') return String(qty);
   return qty < 1 ? (Math.round(qty*1000)) + ' g' : String(qty).replace('.', ',') + ' kg';
@@ -570,7 +582,7 @@ function renderCatalog(){
       tile.style.background = group.tint;
       tile.innerHTML =
         '<div class="tname">'+item.name+'</div>' +
-        '<div class="tdesc">'+(item.un ? 'Vendido por: ' + item.un : '')+'</div>' +
+        '<div class="tdesc">'+(item.un === 'cento' ? 'Preço por cento (100 un) · pedido mínimo 50 un' : (item.un ? 'Vendido por: ' + item.un : ''))+'</div>' +
         '<div class="tbottom"><span class="tprice">'+money(item.price)+'</span><div class="buy-slot" data-id="'+item.id+'"></div></div>';
       grid.appendChild(tile);
     });
@@ -602,14 +614,20 @@ document.getElementById('catalog').addEventListener('click', function(e){
   if (!btn) return;
   var id = btn.dataset.id, act = btn.dataset.act;
   var item = findItemById(id);
-  var passo = passoQtd(item && item.un);
-  if (act === 'add' || act === 'inc'){
+  var un = (item && item.un) || 'un';
+  var passo = passoQtd(un);
+  var minimo = minimoQtd(un);
+  if (act === 'add'){
     if (!cart[id]){ cart[id] = {name:item.name, price:item.price, qty:0}; }
+    // Primeiro clique sempre pula direto pro minimo (1 unidade/100g pros
+    // produtos de sempre - igual já era -, 50 unidades pra "cento").
+    cart[id].qty = Math.round(minimo * 100) / 100;
+    showToast(cart[id].name + ' adicionado');
+  } else if (act === 'inc'){
     cart[id].qty = Math.round((cart[id].qty + passo) * 100) / 100;
-    if (act==='add') showToast(cart[id].name + ' adicionado');
   } else if (act === 'dec'){
     cart[id].qty = Math.round((cart[id].qty - passo) * 100) / 100;
-    if (cart[id].qty <= 0) delete cart[id];
+    if (cart[id].qty < minimo) delete cart[id];
   }
   renderBuySlots();
   updateAllCartUI();
@@ -633,14 +651,21 @@ function showToast(msg){
 }
 
 function cartCount(){ return Object.keys(cart).length; }
-function cartTotalValue(){ var t=0; for (var k in cart) t+=cart[k].qty*cart[k].price; return t; }
+function cartTotalValue(){
+  var t=0;
+  for (var k in cart){
+    var produto = findItemById(k);
+    t += precoLinha(cart[k].qty, cart[k].price, (produto && produto.un) || 'un');
+  }
+  return t;
+}
 
 function lineHTML(id, it, removable){
   var produto = findItemById(id);
   var un = (produto && produto.un) || 'un';
   return '<div class="cart-line">' +
-    '<div class="ci-info"><b>'+it.name+'</b><span>'+formatQtd(it.qty, un)+' × '+money(it.price)+(un==='kg' ? '/kg' : '')+'</span></div>' +
-    '<div class="ci-sub">'+money(it.qty*it.price)+'</div>' +
+    '<div class="ci-info"><b>'+it.name+'</b><span>'+formatQtd(it.qty, un)+' × '+money(it.price)+(un==='kg' ? '/kg' : (un==='cento' ? '/cento' : ''))+'</span></div>' +
+    '<div class="ci-sub">'+money(precoLinha(it.qty, it.price, un))+'</div>' +
     (removable ? '<button type="button" class="ci-rm" data-rm="'+id+'" aria-label="Remover '+it.name+'">×</button>' : '') +
     '</div>';
 }
