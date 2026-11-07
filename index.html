@@ -88,6 +88,11 @@ a{color:inherit;}
 .greet{max-width:1200px;width:100%;margin:0 auto;padding:18px 16px 12px;}
 .greet h1{font-size:23px;line-height:1.22;color:var(--brand-strong);text-wrap:balance;}
 .greet .greet-sub{font:400 15px/1.5 var(--f-body);color:var(--soft);margin-top:6px;max-width:62ch;text-wrap:pretty;}
+/* Endereço de retirada (Google Maps da padaria, conferido pelo telefone; aprovado pelo usuário 2026-11-07) */
+.greet .greet-local{font:500 14px/1.45 var(--f-body);color:var(--soft);margin-top:6px;}
+.greet .greet-local a{color:var(--brand-strong);text-underline-offset:2px;}
+[data-tema="c"] .greet .greet-local{text-align:center;}
+.local-retirada a{color:var(--brand-strong);font-weight:600;}
 
 /* ===== produtos ===== */
 .main-wrap{max-width:1200px;width:100%;margin:0 auto;padding:2px 16px 36px;}
@@ -443,6 +448,7 @@ a{color:inherit;}
   <div class="greet">
     <h1>Monte sua encomenda e escolha quando retirar</h1>
     <p class="greet-sub">A equipe da padaria confirma a disponibilidade e os valores pelo WhatsApp antes de preparar.</p>
+    <p class="greet-local">Retirada: <a href="https://www.google.com/maps/search/?api=1&amp;query=Padaria+Vila+Moreira+R.+Silvestre+Vasconcelos+Calmon+137+Guarulhos" target="_blank" rel="noopener">R. Silvestre V. Calmon, 137 – Guarulhos</a></p>
   </div>
 
   <div class="aviso-wrap-catalogo" id="avisoCatalogo" aria-live="polite"></div>
@@ -507,6 +513,10 @@ a{color:inherit;}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
           <div><b>Pode não dar tempo</b><p id="quandoAvisoTexto"></p></div>
         </div>
+        <div class="note-box local-retirada" id="localRetirada">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+          <div><b>Onde retirar</b><p>Padaria Vila Moreira — R. Silvestre Vasconcelos Calmon, 137, Vila Pedro Moreira, Guarulhos – SP, 07020-001. <a href="https://www.google.com/maps/search/?api=1&amp;query=Padaria+Vila+Moreira+R.+Silvestre+Vasconcelos+Calmon+137+Guarulhos" target="_blank" rel="noopener">Ver no mapa</a></p></div>
+        </div>
         <div class="note-box" id="confirmaNote">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
           <div><b>A padaria confirma pelo WhatsApp</b><p>Depois do envio, a equipe confere se consegue preparar para o dia e o horário escolhidos e responde pelo WhatsApp informado.</p></div>
@@ -564,6 +574,7 @@ a{color:inherit;}
     <div class="status-card" id="statusCard">
       <div class="srow"><span>Nº da solicitação</span><span id="stNum">—</span></div>
       <div class="srow"><span>Retirada</span><span id="stWhen">—</span></div>
+      <div class="srow"><span>Local</span><span><a href="https://www.google.com/maps/search/?api=1&amp;query=Padaria+Vila+Moreira+R.+Silvestre+Vasconcelos+Calmon+137+Guarulhos" target="_blank" rel="noopener" style="color:inherit">R. Silvestre Vasconcelos Calmon, 137 – Guarulhos</a></span></div>
       <div class="srow"><span>Itens</span><span id="stItems">—</span></div>
       <div class="srow"><span id="stTotalLabel">Total</span><span id="stTotal">—</span></div>
     </div>
