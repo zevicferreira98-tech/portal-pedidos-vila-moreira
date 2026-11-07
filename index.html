@@ -93,6 +93,9 @@ a{color:inherit;}
 .greet .greet-local a{color:var(--brand-strong);text-underline-offset:2px;}
 [data-tema="c"] .greet .greet-local{text-align:center;}
 .local-retirada a{color:var(--brand-strong);font-weight:600;}
+/* Formas de pagamento informadas pelo usuário em 2026-11-07 */
+.local-retirada .pagamento-info{margin-top:6px;}
+.local-retirada .pagamento-info b{display:inline;font-weight:600;}
 
 /* ===== produtos ===== */
 .main-wrap{max-width:1200px;width:100%;margin:0 auto;padding:2px 16px 36px;}
@@ -515,7 +518,7 @@ a{color:inherit;}
         </div>
         <div class="note-box local-retirada" id="localRetirada">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
-          <div><b>Onde retirar</b><p>Padaria Vila Moreira — R. Silvestre Vasconcelos Calmon, 137, Vila Pedro Moreira, Guarulhos – SP, 07020-001. <a href="https://www.google.com/maps/search/?api=1&amp;query=Padaria+Vila+Moreira+R.+Silvestre+Vasconcelos+Calmon+137+Guarulhos" target="_blank" rel="noopener">Ver no mapa</a></p></div>
+          <div><b>Onde retirar</b><p>Padaria Vila Moreira — R. Silvestre Vasconcelos Calmon, 137, Vila Pedro Moreira, Guarulhos – SP, 07020-001. <a href="https://www.google.com/maps/search/?api=1&amp;query=Padaria+Vila+Moreira+R.+Silvestre+Vasconcelos+Calmon+137+Guarulhos" target="_blank" rel="noopener">Ver no mapa</a></p><p class="pagamento-info"><b>Pagamento:</b> Pix, dinheiro, débito ou crédito.</p></div>
         </div>
         <div class="note-box" id="confirmaNote">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
@@ -540,7 +543,7 @@ a{color:inherit;}
         <div id="cartLines"></div>
         <hr class="tear">
         <div class="cart-total"><span id="cartTotalLabel">TOTAL</span><b id="cartTotal" aria-live="polite" aria-atomic="true">R$ 0,00</b></div>
-        <p class="total-note" id="cartTotalNote" hidden>Itens vendidos por peso: a padaria confirma o valor final.</p>
+        <p class="total-note" id="cartTotalNote" hidden>Itens vendidos por peso: o valor é uma estimativa. Eles são pesados na padaria; você paga um sinal para confirmar a encomenda e acerta a diferença na retirada.</p>
       </div>
 
       <div class="note-box">
@@ -575,6 +578,7 @@ a{color:inherit;}
       <div class="srow"><span>Nº da solicitação</span><span id="stNum">—</span></div>
       <div class="srow"><span>Retirada</span><span id="stWhen">—</span></div>
       <div class="srow"><span>Local</span><span><a href="https://www.google.com/maps/search/?api=1&amp;query=Padaria+Vila+Moreira+R.+Silvestre+Vasconcelos+Calmon+137+Guarulhos" target="_blank" rel="noopener" style="color:inherit">R. Silvestre Vasconcelos Calmon, 137 – Guarulhos</a></span></div>
+      <div class="srow"><span>Pagamento</span><span>Pix, dinheiro, débito ou crédito</span></div>
       <div class="srow"><span>Itens</span><span id="stItems">—</span></div>
       <div class="srow"><span id="stTotalLabel">Total</span><span id="stTotal">—</span></div>
     </div>
@@ -1409,7 +1413,7 @@ function renderSideCart(){
   }
   el.innerHTML = cart.map(linhaResumoHTML).join('')
     + '<hr class="tear"><div class="cart-total"><span>' + totalLabel().toUpperCase() + '</span><b>' + esc(money(cartTotalValue())) + '</b></div>'
-    + (cartTemKg() ? '<p class="total-note">Itens vendidos por peso: a padaria confirma o valor final.</p>' : '')
+    + (cartTemKg() ? '<p class="total-note">Itens vendidos por peso: o valor é uma estimativa. Eles são pesados na padaria; você paga um sinal para confirmar a encomenda e acerta a diferença na retirada.</p>' : '')
     + '<button type="button" class="btn-primary" data-goto="carrinho" data-fid="side:revisar"><span class="btn-label">Revisar pedido →</span></button>';
 }
 
