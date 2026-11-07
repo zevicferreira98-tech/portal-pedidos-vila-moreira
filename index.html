@@ -665,12 +665,17 @@ function descricaoPizza(nome){
   var k = normalizarBusca(String(nome || '').replace(/^\s*pizza\s+/i, ''));
   return temProp(DESCRICOES_PIZZA, k) ? DESCRICOES_PIZZA[k] : '';
 }
-/** Descrição oficial do produto (lanche de metro ou pizza); vazio quando não há texto verificado. */
+/** Descrição oficial do produto (lanche de metro ou pizza) + a "Observação" da planilha, que o
+ * sistema de pedidos também mostra (servidor envia desde a Versão 14, 2026-11-07). Vazio quando
+ * não há texto verificado. Linha da comanda (sem obs) busca a observação no catálogo pelo pid. */
 function descricaoProduto(p){
   if (!p) return '';
-  if (ehLanche(p)) return descricaoLanche(p.name || p.nome);
-  if (p.cat === 'Pizzas') return descricaoPizza(p.name || p.nome);
-  return '';
+  var oficial = '';
+  if (ehLanche(p)) oficial = descricaoLanche(p.name || p.nome);
+  else if (p.cat === 'Pizzas') oficial = descricaoPizza(p.name || p.nome);
+  var doCatalogo = p.pid && PRODUTOS[p.pid] ? PRODUTOS[p.pid] : p;
+  var obs = doCatalogo && doCatalogo.obs ? String(doCatalogo.obs) : '';
+  return [oficial, obs].filter(Boolean).join(' · ');
 }
 var FUSO = 'America/Sao_Paulo';
 var DIAS_MAX_ANTECEDENCIA = 90;
@@ -1197,7 +1202,7 @@ function aplicarCatalogo(todos, regras, doCache){
   var porCategoria = {};
   todos.forEach(function(p){
     if (!p || !p.pid) return;
-    var prod = { id:String(p.pid), name:String(p.nome || ''), price:+p.preco || 0, un:p.un || 'un', cat:p.cat || 'Outros', gUn:p.gUn };
+    var prod = { id:String(p.pid), name:String(p.nome || ''), price:+p.preco || 0, un:p.un || 'un', cat:p.cat || 'Outros', gUn:p.gUn, obs:p.obs ? String(p.obs) : '' };
     PRODUTOS[prod.id] = prod;
     // R4: adicional de pão nunca vira cartão próprio - só aparece como opção dentro do lanche.
     if (ehAdicionalPao(prod)){ ADICIONAIS_PAO.push(prod); return; }
