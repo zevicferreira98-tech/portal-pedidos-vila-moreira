@@ -698,6 +698,38 @@ var DESCRICOES_LANCHE = {
   'frango 2': 'Frango desfiado, provolone, milho, cenoura ralada e maionese',
   'frango 3': 'Frango desfiado, mussarela, requeijão, cenoura ralada'
 };
+// Texto oficial do cardápio "Pizzas para viagem" (Downloads/cardapio-pizzas-vila-moreira.pdf, 2026-08-26;
+// preços conferidos iguais ao catálogo em 2026-11-07). Só o texto; preço vem sempre do catálogo.
+// Chave = nome do catálogo sem o prefixo "Pizza ", normalizado (sem acento, minúsculas).
+var DESCRICOES_PIZZA = {
+  'a moda da casa': 'Molho de tomate, presunto, ovo, cebola, ervilha e mussarela',
+  'atum i': 'Molho de tomate, atum e cebola',
+  'atum ii': 'Molho de tomate, atum, cebola, mussarela e azeitona',
+  'atum iii': 'Molho de tomate, atum, cebola, mussarela, catupiry e azeitona',
+  'calabresa i': 'Molho de tomate, calabresa, cebola e azeitona',
+  'calabresa ii': 'Molho de tomate, calabresa, cebola, mussarela e azeitona',
+  'calabresa iii': 'Molho de tomate, calabresa, cebola, mussarela, catupiry e azeitona',
+  'mussarela': 'Molho de tomate, mussarela, orégano e azeitona',
+  'palmito i': 'Molho de tomate, palmito, mussarela e azeitona',
+  'palmito ii': 'Molho de tomate, palmito, mussarela, catupiry e azeitona',
+  'portuguesa i': 'Molho de tomate, presunto, ovo, cebola e azeitona',
+  'portuguesa ii': 'Molho de tomate, presunto, ovo, cebola, mussarela e azeitona',
+  'catupiry': 'Molho de tomate, catupiry, orégano e azeitona',
+  'dois queijos': 'Molho de tomate, mussarela, catupiry e azeitona',
+  'tres queijos': 'Molho de tomate, mussarela, provolone, catupiry e azeitona',
+  'disco de pizza (massa avulsa)': 'Massa avulsa, sem recheio · leve para assar em casa'
+};
+function descricaoPizza(nome){
+  var k = normalizarBusca(String(nome || '').replace(/^\s*pizza\s+/i, ''));
+  return temProp(DESCRICOES_PIZZA, k) ? DESCRICOES_PIZZA[k] : '';
+}
+/** Descrição oficial do produto (lanche de metro ou pizza); vazio quando não há texto verificado. */
+function descricaoProduto(p){
+  if (!p) return '';
+  if (ehLanche(p)) return descricaoLanche(p.name || p.nome);
+  if (p.cat === 'Pizzas') return descricaoPizza(p.name || p.nome);
+  return '';
+}
 var FUSO = 'America/Sao_Paulo';
 var DIAS_MAX_ANTECEDENCIA = 90;
 var CARRINHO_KEY = 'vm_portal_carrinho_v2';
@@ -1304,7 +1336,7 @@ function renderCatalog(){
     algum = true;
     html += '<section class="catsec"><h2>' + esc(group.title) + '</h2><div class="tilegrid">';
     items.forEach(function(it){
-      var lanche = ehLanche(it), desc = lanche ? descricaoLanche(it.name) : '';
+      var lanche = ehLanche(it), desc = descricaoProduto(it);
       html += '<article class="tile" style="background:' + group.tint + '" data-pid="' + esc(it.id) + '">'
         + '<h3 class="tname">' + esc(it.name) + '</h3>'
         + (desc ? '<p class="tdesc">' + esc(desc) + '</p>' : '<p class="tdesc"></p>')
@@ -1378,7 +1410,7 @@ function linhaResumoHTML(l){
 }
 /** Linha editável (tela de revisão): quantidade digitável, troca de pão, remover. */
 function linhaEditavelHTML(l){
-  var desc = l.cat === CAT_LANCHE ? descricaoLanche(l.nome) : '';
+  var desc = descricaoProduto(l);
   var html = '<div class="cart-line" data-key="' + esc(l.key) + '"><div class="ci-info"><b>' + esc(nomeDaLinha(l)) + '</b>'
     + (desc ? '<span class="ci-desc">' + esc(desc) + '</span>' : '')
     + '<span class="ci-calc">' + esc(calcTexto(l)) + '</span>'
