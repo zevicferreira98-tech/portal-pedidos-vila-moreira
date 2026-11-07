@@ -446,17 +446,41 @@ var PORTAL_API_URL = 'https://script.google.com/macros/s/AKfycbzzMkLu-U5qRBp10ak
 
 /** Mesmo padrao ja comprovado em fonte-original/index.html (funcao planilha()):
  * Content-Type text/plain evita o preflight CORS que o Apps Script nao trata. */
-async function portalApi(acao, payload){
+async function portalApi(acao, payload, limiteMs){
   if (!PORTAL_API_URL) throw new Error('Backend ainda nao publicado (PORTAL_API_URL vazio).');
   var corpo = Object.assign({acao:acao, versao:1}, payload || {});
-  var res = await fetch(PORTAL_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(corpo),
-    redirect: 'follow'
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return await res.json();
+  var controle = limiteMs ? new AbortController() : null;
+  var relogio = controle ? setTimeout(function(){ controle.abort(); }, limiteMs) : null;
+  try {
+    var res = await fetch(PORTAL_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(corpo),
+      redirect: 'follow',
+      signal: controle ? controle.signal : undefined
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } finally {
+    if (relogio) clearTimeout(relogio);
+  }
+}
+
+/** Repetir é seguro só aqui, porque listar o catálogo não grava nada. Nunca usar
+ * em portal.criarSolicitacao: uma resposta perdida viraria solicitação duplicada.
+ * Achado real 2026-11-07: uma chamada ficou 25s parada e caiu em "Failed to fetch". */
+var CATALOGO_LIMITE_MS = 12000;
+var CATALOGO_ESPERAS_MS = [1000, 3000];
+async function listarCatalogoComRetentativa(pagina, aoRepetir){
+  for (var tentativa = 0; ; tentativa++){
+    try {
+      return await portalApi('portal.listarCatalogo', {pagina: pagina, porPagina: 100}, CATALOGO_LIMITE_MS);
+    } catch (e){
+      if (tentativa >= CATALOGO_ESPERAS_MS.length) throw e;
+      aoRepetir();
+      await new Promise(function(ok){ setTimeout(ok, CATALOGO_ESPERAS_MS[tentativa]); });
+    }
+  }
 }
 
 var CATALOG = [];
@@ -555,7 +579,9 @@ async function carregarCatalogoReal(){
     var todos = [];
     var pagina = 1, totalPaginas = 1;
     do {
-      var resp = await portalApi('portal.listarCatalogo', {pagina: pagina, porPagina: 100});
+      var resp = await listarCatalogoComRetentativa(pagina, function(){
+        root.innerHTML = '<p style="padding:20px;color:var(--soft);">A conexão está lenta. Tentando de novo…</p>';
+      });
       if (!resp.ok) throw new Error(resp.erro || 'Falha ao carregar catálogo.');
       todos = todos.concat(resp.itens);
       totalPaginas = resp.totalPaginas || 1;
@@ -581,7 +607,12 @@ async function carregarCatalogoReal(){
     buildCategoryChips(categoriasOrdenadas);
     renderCatalog();
   } catch (e){
-    root.innerHTML = '<p style="padding:20px;color:var(--alert-fg);">Não consegui carregar o cardápio: ' + e.message + '</p>';
+    console.error('Falha ao carregar o catálogo:', e);
+    root.innerHTML = '<div style="padding:20px;">'
+      + '<p style="color:var(--alert-fg);">Não conseguimos carregar o cardápio agora. Confira sua internet e tente novamente.</p>'
+      + '<button type="button" class="btn-ghost" id="tentarCatalogo" style="width:auto;">Tentar novamente</button>'
+      + '</div>';
+    document.getElementById('tentarCatalogo').addEventListener('click', carregarCatalogoReal);
   }
 }
 
